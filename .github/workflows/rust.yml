@@ -25,7 +25,6 @@ jobs:
 
           - target: aarch64-apple-darwin
             os: macos-latest
-            build_tool: cross
 
           - target: x86_64-pc-windows-msvc
             os: windows-latest
