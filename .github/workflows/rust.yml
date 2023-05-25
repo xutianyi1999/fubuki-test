@@ -52,7 +52,6 @@ jobs:
           # [default value: windows]
           # [possible values: all, unix, windows, none]
           zip: windows
-          build_tool: ${{ matrix.build_tool }}
           features: web
         env:
           # (required)
