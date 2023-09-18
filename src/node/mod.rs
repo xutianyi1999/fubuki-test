@@ -545,7 +545,7 @@ where
                                         macro_rules! send {
                                             ($peer_addr: expr) => {
                                                 if !in_routing_table(rt, $peer_addr) {
-                                                    socket.send_to(&packet, $peer_addr).await?;
+                                                    let _ = socket.send_to(&packet, $peer_addr).await;
                                                 }
                                             };
                                         }
