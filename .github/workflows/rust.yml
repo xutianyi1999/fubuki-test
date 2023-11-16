@@ -33,7 +33,7 @@ jobs:
 
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
-            build_tool: cargo-zigbuild
+            build_tool: cargo
 
           - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
