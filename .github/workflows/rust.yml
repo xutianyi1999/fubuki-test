@@ -48,7 +48,7 @@ jobs:
 
           - target: i686-unknown-linux-musl
             os: ubuntu-latest
-            build_tool: cargo
+            build_tool: cargo-zigbuild
             
           - target: aarch64-unknown-linux-musl
             os: ubuntu-latest

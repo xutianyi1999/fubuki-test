@@ -31,6 +31,7 @@ scopeguard = "1"
 arrayvec = { version = "0.7", features = ["serde"] }
 static-files = { version = "0.2", optional = true }
 gethostname = "0.4"
+mimalloc = { version = "*", default-features = false }
 
 linear-map = { git = "https://github.com/contain-rs/linear-map.git" }
 klask = { git = "https://github.com/xosxos/klask.git", optional = true }
@@ -38,8 +39,6 @@ net-route = { git = "https://github.com/johnyburd/net-route.git" }
 netconfig = { git = "https://github.com/xutianyi1999/netconfig.git" }
 hostsfile = { git = "https://github.com/tonarino/innernet.git" }
 
-#[target.'cfg(not(all(target_env = "musl", target_arch=)))'.dependencies]
-mimalloc = { version = "*", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tempfile = "3"
