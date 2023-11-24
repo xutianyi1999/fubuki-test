@@ -19,6 +19,7 @@ jobs:
     strategy:
       matrix:
         include:
+          # apple
           - target: x86_64-apple-darwin
             os: macos-latest
             build_tool: cargo
@@ -26,20 +27,38 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
             build_tool: cargo
-
+            
+          - target: i686-apple-darwin
+            os: macos-latest
+            build_tool: cargo
+           
+          #windows
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             build_tool: cargo
+            
+          - target: i686-pc-windows-msvc
+            os: windows-latest
+            build_tool: cargo
+            
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            build_tool: cargo
 
+          #linux
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             build_tool: cargo
 
+          - target: i686-unknown-linux-musl
+            os: ubuntu-latest
+            build_tool: cargo
+            
           - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
             build_tool: cargo-zigbuild
 
-          - target: armv7-unknown-linux-musleabi
+          - target: armv7-unknown-linux-musleabihf
             os: ubuntu-latest
             build_tool: cargo-zigbuild
 
