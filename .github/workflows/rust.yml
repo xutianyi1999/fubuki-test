@@ -50,9 +50,9 @@ jobs:
             os: ubuntu-latest
             build_tool: cargo
             
-          - target: aarch64-unknown-linux-musl
+          - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
-            build_tool: cargo-zigbuild
+            build_tool: cargo
 
           - target: armv7-unknown-linux-musleabihf
             os: ubuntu-latest
