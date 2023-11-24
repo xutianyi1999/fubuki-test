@@ -62,8 +62,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
-          apt update
-          apt install musl-tools
+          sudo apt update -y
+          apt install -y musl-tools
         if: ${{ matrix.os }} == ubuntu-latest && ${{ matrix.build_tool }} == cargo
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
