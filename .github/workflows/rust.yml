@@ -27,11 +27,7 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
             build_tool: cargo
-            
-          - target: i686-apple-darwin
-            os: macos-latest
-            build_tool: cargo
-           
+
           #windows
           - target: x86_64-pc-windows-msvc
             os: windows-latest
@@ -64,7 +60,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           target: ${{ matrix.target }}
