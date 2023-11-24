@@ -64,7 +64,7 @@ jobs:
       - run: |
           sudo apt update -y
           sudo apt install -y musl-tools
-        if: ${{ matrix.os }} == ubuntu-latest && ${{ matrix.build_tool }} == cargo
+        if: ${{ matrix.os }} == 'ubuntu-latest' && ${{ matrix.build_tool }} == 'cargo'
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           target: ${{ matrix.target }}
