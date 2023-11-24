@@ -50,7 +50,7 @@ mod nat;
 mod web;
 mod routing_table;
 
-#[cfg(not(target_env = "musl"))]
+// #[cfg(not(target_env = "musl"))]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 

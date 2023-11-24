@@ -28,7 +28,7 @@ jobs:
             os: macos-latest
             build_tool: cargo
 
-          #windows
+          # windows
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             build_tool: cargo
@@ -41,7 +41,7 @@ jobs:
             os: windows-latest
             build_tool: cargo
 
-          #linux
+          # linux
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             build_tool: cargo
@@ -61,6 +61,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - run: |
+          apt update
+          apt install musl-tools
+        if: ${{ matrix.os }} == ubuntu-latest && ${{ matrix.build_tool }} == cargo
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           target: ${{ matrix.target }}
