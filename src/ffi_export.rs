@@ -5,10 +5,12 @@ use std::ptr::null_mut;
 use std::slice;
 
 use anyhow::Result;
+use futures_util::future::BoxFuture;
 use tokio::runtime::Runtime;
 
-use crate::{Key, logger_init, node, NodeConfig, NodeConfigFinalize};
+use crate::{logger_init, node, NodeConfig, NodeConfigFinalize};
 use crate::common::allocator::{alloc, Bytes};
+use crate::common::cipher::{RotationCipher, XorCipher};
 use crate::tun::TunDevice;
 
 struct Bridge {
@@ -86,7 +88,7 @@ fn fubuki_init_inner(
 ) -> Result<Box<Handle>> {
     let s = unsafe { CStr::from_ptr(node_config_json) }.to_bytes();
     let config: NodeConfig = serde_json::from_slice(s)?;
-    let c: NodeConfigFinalize<Key> = NodeConfigFinalize::try_from(config)?;
+
     let rt = Runtime::new()?;
     logger_init()?;
 
@@ -101,9 +103,17 @@ fn fubuki_init_inner(
         if_to_fubuki_rx: rx,
     };
 
+    let fut: BoxFuture<Result<()>> = if config.features.as_ref().and_then(|f|f.enable_key_rotation) == Some(true) {
+        let c: NodeConfigFinalize<RotationCipher<XorCipher>> = NodeConfigFinalize::try_from(config)?;
+        Box::pin(node::start(c, bridge))
+    } else {
+        let c: NodeConfigFinalize<XorCipher> = NodeConfigFinalize::try_from(config)?;
+        Box::pin(node::start(c, bridge))
+    };
+
     rt.spawn(
         async move {
-            if let Err(e) = node::start(c, bridge).await {
+            if let Err(e) = fut.await {
                 error!("{:?}", e);
             }
         }

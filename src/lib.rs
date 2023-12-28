@@ -31,7 +31,7 @@ use log::LevelFilter;
 use serde::{de, Deserialize};
 use tokio::runtime::Runtime;
 
-use crate::common::cipher::{Cipher, XorCipher};
+use crate::common::cipher::{Cipher, RotationCipher, XorCipher};
 use crate::common::net::get_interface_addr;
 use crate::common::net::protocol::{NetProtocol, ProtocolMode, SERVER_VIRTUAL_ADDR, VirtualAddr};
 
@@ -55,14 +55,17 @@ pub mod ffi_export;
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-type Key = XorCipher;
-
 #[derive(Deserialize, Clone)]
 struct Group {
     name: String,
     listen_addr: SocketAddr,
     key: String,
     address_range: Ipv4Net,
+}
+
+#[derive(Deserialize, Clone)]
+struct ServerConfigFeature {
+    enable_key_rotation: Option<bool>
 }
 
 #[derive(Deserialize, Clone)]
@@ -75,6 +78,7 @@ struct ServerConfig {
     udp_heartbeat_continuous_loss: Option<u64>,
     udp_heartbeat_continuous_recv: Option<u64>,
     groups: Vec<Group>,
+    features: Option<ServerConfigFeature>,
 }
 
 #[derive(Clone)]
@@ -156,6 +160,7 @@ struct TunAddr {
     netmask: Ipv4Addr,
 }
 
+// todo add supported mode for sending to dest node, override config
 #[derive(Deserialize, Clone)]
 struct TargetGroup {
     node_name: Option<String>,
@@ -166,6 +171,15 @@ struct TargetGroup {
     lan_ip_addr: Option<IpAddr>,
     allowed_ips: Option<Vec<Ipv4Net>>,
     ips: Option<HashMap<VirtualAddr, Vec<Ipv4Net>>>,
+}
+
+#[derive(Deserialize, Clone)]
+struct NodeConfigFeature {
+    disable_hosts_operation: Option<bool>,
+    disable_signal_handling: Option<bool>,
+    disable_route_operation: Option<bool>,
+    disable_api_server: Option<bool>,
+    enable_key_rotation: Option<bool>
 }
 
 #[derive(Deserialize, Clone)]
@@ -185,14 +199,6 @@ struct NodeConfig {
     features: Option<NodeConfigFeature>,
 }
 
-#[derive(Deserialize, Clone)]
-struct NodeConfigFeature {
-    disable_hosts_operation: Option<bool>,
-    disable_signal_handling: Option<bool>,
-    disable_route_operation: Option<bool>,
-    disable_api_server: Option<bool>,
-}
-
 #[derive(Clone)]
 struct TargetGroupFinalize<K> {
     node_name: String,
@@ -203,6 +209,14 @@ struct TargetGroupFinalize<K> {
     lan_ip_addr: Option<IpAddr>,
     allowed_ips: Vec<Ipv4Net>,
     ips: HashMap<VirtualAddr, Vec<Ipv4Net>>,
+}
+
+#[derive(Clone)]
+pub struct NodeConfigFeatureFinalize {
+    disable_hosts_operation: bool,
+    disable_signal_handling: bool,
+    disable_route_operation: bool,
+    disable_api_server: bool,
 }
 
 #[derive(Clone)]
@@ -220,14 +234,6 @@ struct NodeConfigFinalize<K> {
     udp_socket_send_buffer_size: Option<usize>,
     groups: Vec<TargetGroupFinalize<K>>,
     features: NodeConfigFeatureFinalize,
-}
-
-#[derive(Clone)]
-pub struct NodeConfigFeatureFinalize {
-    disable_hosts_operation: bool,
-    disable_signal_handling: bool,
-    disable_route_operation: bool,
-    disable_api_server: bool,
 }
 
 impl<K: Clone> TryFrom<NodeConfig> for NodeConfigFinalize<K>
@@ -271,10 +277,7 @@ where
                     }
                 };
 
-                if lan_ip_addr.is_ipv6() {
-                    use_ipv6 = true;
-                }
-
+                use_ipv6 |= lan_ip_addr.is_ipv6();
                 use_udp = true;
                 Some(lan_ip_addr)
             } else {
@@ -483,10 +486,16 @@ pub fn launch(args: Args) -> Result<()> {
         Args::Server { cmd } => {
             match cmd {
                 ServerCmd::Daemon { config_path } => {
-                    let t: ServerConfig = load_config(&config_path)?;
-                    let config: ServerConfigFinalize<Key> = ServerConfigFinalize::try_from(t)?;
+                    let c: ServerConfig = load_config(&config_path)?;
                     let rt = Runtime::new()?;
-                    rt.block_on(server::start(config))?;
+
+                    if c.features.as_ref().and_then(|f|f.enable_key_rotation) == Some(true) {
+                        let config: ServerConfigFinalize<RotationCipher<XorCipher>> = ServerConfigFinalize::try_from(c)?;
+                        rt.block_on(server::start(config))?;
+                    } else {
+                        let config: ServerConfigFinalize<XorCipher> = ServerConfigFinalize::try_from(c)?;
+                        rt.block_on(server::start(config))?;
+                    }
                 }
                 ServerCmd::Info { api, info_type } => {
                     let rt = tokio::runtime::Builder::new_current_thread()
@@ -500,10 +509,16 @@ pub fn launch(args: Args) -> Result<()> {
         Args::Node { cmd } => {
             match cmd {
                 NodeCmd::Daemon { config_path } => {
-                    let config: NodeConfig = load_config(&config_path)?;
-                    let c: NodeConfigFinalize<Key> = NodeConfigFinalize::try_from(config)?;
+                    let c: NodeConfig = load_config(&config_path)?;
                     let rt = Runtime::new()?;
-                    rt.block_on(node::start(c, tun::create().context("failed to create tun")?))?;
+
+                    if c.features.as_ref().and_then(|f|f.enable_key_rotation) == Some(true) {
+                        let config: NodeConfigFinalize<RotationCipher<XorCipher>> = NodeConfigFinalize::try_from(c)?;
+                        rt.block_on(node::start(config, tun::create().context("failed to create tun")?))?;
+                    } else {
+                        let config: NodeConfigFinalize<RotationCipher<XorCipher>> = NodeConfigFinalize::try_from(c)?;
+                        rt.block_on(node::start(config, tun::create().context("failed to create tun")?))?;
+                    }
                 }
                 NodeCmd::Info { api, info_type } => {
                     let rt = tokio::runtime::Builder::new_current_thread()
