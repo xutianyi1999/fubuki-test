@@ -36,7 +36,7 @@ use crate::common::{allocator, utc_to_str};
 use crate::common::allocator::Bytes;
 use crate::common::cipher::Options;
 use crate::common::net::{get_ip_dst_addr, get_ip_src_addr, HeartbeatCache, HeartbeatInfo, SocketExt, UdpStatus};
-use crate::common::net::protocol::{AllocateError, GroupContent, HeartbeatType, NetProtocol, Node, Register, RegisterError, Seq, SERVER_VIRTUAL_ADDR, TCP_BUFF_SIZE, TCP_MSG_HEADER_LEN, TcpMsg, UDP_BUFF_SIZE, UDP_MSG_HEADER_LEN, UdpMsg, VirtualAddr};
+use crate::common::net::protocol::{AllocateError, GroupContent, HeartbeatType, MAGIC_NUM, NetProtocol, Node, Register, RegisterError, Seq, SERVER_VIRTUAL_ADDR, TCP_BUFF_SIZE, TCP_MSG_HEADER_LEN, TcpMsg, UDP_BUFF_SIZE, UDP_MSG_HEADER_LEN, UdpMsg, VirtualAddr};
 use crate::nat::{add_nat, del_nat};
 use crate::node::api::api_start;
 use crate::node::sys_route::SystemRouteHandle;
@@ -579,7 +579,10 @@ where
                 };
 
                 let packet = &mut buff[..len];
-                key.decrypt(packet, &Options::default());
+                key.decrypt(packet, &Options{
+                    offset: 0,
+                    expect_prefix: Some(&[MAGIC_NUM])
+                });
 
                 if let Ok(packet) = UdpMsg::decode(packet) {
                     match packet {
