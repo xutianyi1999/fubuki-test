@@ -511,7 +511,7 @@ pub fn launch(args: Args) -> Result<()> {
                     rt.block_on(async {
                         // creating AsyncTun must be in the tokio runtime
                         let tun = tun::create().context("failed to create tun")?;
-                        node::start(c, tun)
+                        node::start(c, tun).await
                     })?;
                 }
                 NodeCmd::Info { api, info_type } => {
