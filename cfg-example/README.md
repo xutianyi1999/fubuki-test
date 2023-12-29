@@ -59,7 +59,7 @@
     - tun_addr(可选): 本地节点的IP地址与掩码，默认从地址池获取
         - ip: 节点IP地址
         - netmask: 子网掩码
-    - key: 预共享密钥
+    - key(可选): 预共享密钥, 不设置则不加密
     - mode(可选): 数据传递方式，默认直连为UDP，中转优先使用UDP，备选TCP
         - p2p: 直连的协议，目前仅支持UDP
         - relay: 中转的协议，支持UDP与TCP
@@ -104,5 +104,5 @@
 - groups 配置多组网段
     - name: 组名称
     - listen_addr: 监听地址
-    - key: 预共享密钥
+    - key(可选): 预共享密钥, 不设置则不加密
     - address_range: 网段

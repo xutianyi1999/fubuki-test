@@ -7,25 +7,26 @@ use crossbeam_utils::atomic::AtomicCell;
 use digest::Digest;
 use sha2::Sha256;
 
-#[derive(Copy, Clone)]
-pub struct Options<'a> {
+pub struct CipherContext<'a> {
     pub offset: usize,
-    pub expect_prefix: Option<&'a [u8]>
+    pub expect_prefix: Option<&'a [u8]>,
+    pub key_snapshot: Option<Option<Box<dyn Cipher+ Send>>>
 }
 
-impl Default for Options<'static> {
+impl Default for CipherContext<'static> {
     fn default() -> Self {
-        Options {
+        CipherContext {
             offset: 0,
-            expect_prefix: None
+            expect_prefix: None,
+            key_snapshot: None
         }
     }
 }
 
 pub trait Cipher {
-    fn encrypt(&self, plaintext_to_ciphertext: &mut [u8], options: &Options);
+    fn encrypt(&self, plaintext_to_ciphertext: &mut [u8], context: &mut CipherContext);
 
-    fn decrypt(&self, ciphertext_to_plaintext: &mut [u8], options: &Options);
+    fn decrypt(&self, ciphertext_to_plaintext: &mut [u8], context: &mut CipherContext);
 }
 
 #[derive(Clone, Copy)]
@@ -35,8 +36,8 @@ pub struct XorCipher {
 
 impl Cipher for XorCipher {
     #[inline]
-    fn encrypt(&self, mut data: &mut [u8], options: &Options) {
-        let offset = options.offset;
+    fn encrypt(&self, mut data: &mut [u8], context: &mut CipherContext) {
+        let offset = context.offset;
         let v = offset % 32;
 
         if v != 0 {
@@ -61,8 +62,8 @@ impl Cipher for XorCipher {
     }
 
     #[inline]
-    fn decrypt(&self, ciphertext_to_plaintext: &mut [u8], options: &Options) {
-        self.encrypt(ciphertext_to_plaintext, options)
+    fn decrypt(&self, ciphertext_to_plaintext: &mut [u8], context: &mut CipherContext) {
+        self.encrypt(ciphertext_to_plaintext, context)
     }
 }
 
@@ -162,29 +163,37 @@ impl <K: Copy + for<'a> From<&'a [u8]>> RotationCipher<K> {
     }
 }
 
-impl <K: Cipher + Copy + for<'a> From<&'a [u8]>> Cipher for RotationCipher<K> {
-    fn encrypt(&self, plaintext_to_ciphertext: &mut [u8], options: &Options) {
+impl <K: 'static + Send + Cipher + Copy + for<'a> From<&'a [u8]>> Cipher for RotationCipher<K> {
+    fn encrypt(&self, plaintext_to_ciphertext: &mut [u8], context: &mut CipherContext) {
         let now = Utc::now().timestamp();
         let tp = self.sync(now);
-        tp.curr.encrypt(plaintext_to_ciphertext, options);
+        tp.curr.encrypt(plaintext_to_ciphertext, context);
     }
 
-    fn decrypt(&self, ciphertext_to_plaintext: &mut [u8], options: &Options) {
+    fn decrypt(&self, ciphertext_to_plaintext: &mut [u8], context: &mut CipherContext) {
         let now = Utc::now().timestamp();
         let tp = self.sync(now);
-        tp.curr.decrypt(ciphertext_to_plaintext, options);
+        tp.curr.decrypt(ciphertext_to_plaintext, context);
 
-        if let Some(expect) = options.expect_prefix {
+        if let Some(expect) = context.expect_prefix {
             if expect == &ciphertext_to_plaintext[..expect.len()] {
                 return;
             }
 
-            tp.curr.encrypt(ciphertext_to_plaintext, options);
+            tp.curr.encrypt(ciphertext_to_plaintext, context);
 
             if now - tp.timestamp <= self.fuzzy_range_secs {
-                tp.prev.decrypt(ciphertext_to_plaintext, options);
+                tp.prev.decrypt(ciphertext_to_plaintext, context);
+
+                if let Some(p) = &mut context.key_snapshot {
+                    *p = Some(Box::new(tp.prev));
+                }
             } else if tp.timestamp + self.period_secs - now <= self.fuzzy_range_secs {
-                tp.next.decrypt(ciphertext_to_plaintext, options);
+                tp.next.decrypt(ciphertext_to_plaintext, context);
+
+                if let Some(p) = &mut context.key_snapshot {
+                    *p = Some(Box::new(tp.next));
+                }
             }
         }
     }
@@ -200,10 +209,10 @@ impl From<&[u8]> for NoOpCipher {
 }
 
 impl Cipher for NoOpCipher {
-    fn encrypt(&self, _plaintext_to_ciphertext: &mut [u8], _options: &Options) {
+    fn encrypt(&self, _plaintext_to_ciphertext: &mut [u8], _context: &mut CipherContext) {
     }
 
-    fn decrypt(&self, _ciphertext_to_plaintext: &mut [u8], _options: &Options) {
+    fn decrypt(&self, _ciphertext_to_plaintext: &mut [u8], _context: &mut CipherContext) {
     }
 }
 
@@ -215,19 +224,19 @@ pub enum CipherEnum {
 }
 
 impl Cipher for CipherEnum {
-    fn encrypt(&self, plaintext_to_ciphertext: &mut [u8], options: &Options) {
+    fn encrypt(&self, plaintext_to_ciphertext: &mut [u8], context: &mut CipherContext) {
         match self {
-            CipherEnum::XorCipher(k) => k.encrypt(plaintext_to_ciphertext, options),
-            CipherEnum::RotationCipher(k) => k.encrypt(plaintext_to_ciphertext, options),
-            CipherEnum::NoOpCipher(k) => k.encrypt(plaintext_to_ciphertext, options),
+            CipherEnum::XorCipher(k) => k.encrypt(plaintext_to_ciphertext, context),
+            CipherEnum::RotationCipher(k) => k.encrypt(plaintext_to_ciphertext, context),
+            CipherEnum::NoOpCipher(k) => k.encrypt(plaintext_to_ciphertext, context),
         }
     }
 
-    fn decrypt(&self, ciphertext_to_plaintext: &mut [u8], options: &Options) {
+    fn decrypt(&self, ciphertext_to_plaintext: &mut [u8], context: &mut CipherContext) {
         match self {
-            CipherEnum::XorCipher(k) => k.decrypt(ciphertext_to_plaintext, options),
-            CipherEnum::RotationCipher(k) => k.decrypt(ciphertext_to_plaintext, options),
-            CipherEnum::NoOpCipher(k) => k.decrypt(ciphertext_to_plaintext, options),
+            CipherEnum::XorCipher(k) => k.decrypt(ciphertext_to_plaintext, context),
+            CipherEnum::RotationCipher(k) => k.decrypt(ciphertext_to_plaintext, context),
+            CipherEnum::NoOpCipher(k) => k.decrypt(ciphertext_to_plaintext, context),
         }
     }
 }
@@ -237,11 +246,12 @@ fn test() {
     let k = XorCipher::try_from(b"abc".as_ref()).unwrap();
     let mut text = *b"abcdef";
 
-    k.encrypt(&mut text, &Options::default());
-    k.decrypt(&mut text[..2], &Options::default());
-    k.decrypt(&mut text[2..], &Options {
+    k.encrypt(&mut text, &mut CipherContext::default());
+    k.decrypt(&mut text[..2], &mut CipherContext::default());
+    k.decrypt(&mut text[2..], &mut CipherContext {
         offset: 2,
-        expect_prefix: None
+        expect_prefix: None,
+        key_snapshot: None
     });
 
     assert_eq!(&text, b"abcdef");
