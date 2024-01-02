@@ -516,6 +516,8 @@ pub mod protocol {
             let buff = &mut buff[..len as usize];
             rx.read_exact(buff).await?;
 
+            ctx.offset = 4;
+            ctx.expect_prefix = None;
             key.decrypt(buff, &mut ctx);
             TcpMsg::decode(mode, buff).map(Some)
         }
