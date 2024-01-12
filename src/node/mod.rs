@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::mem::size_of;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::Range;
@@ -312,7 +313,7 @@ enum TransferType {
     Broadcast,
 }
 
-fn find_route<RT: RoutingTable>(rt: &RT, mut dst_addr: Ipv4Addr) -> Option<(Ipv4Addr, &Item)> {
+fn find_route<RT: RoutingTable>(rt: &RT, mut dst_addr: Ipv4Addr) -> Option<(Ipv4Addr, Cow<Item>)> {
     let mut item = rt.find(dst_addr)?;
 
     // is route on link

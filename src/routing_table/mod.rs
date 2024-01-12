@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::net::Ipv4Addr;
 use ipnet::Ipv4Net;
 
@@ -6,7 +7,9 @@ pub use implements::create;
 #[cfg_attr(not(feature = "hash-routing-table"), path = "array.rs")]
 #[cfg_attr(feature = "hash-routing-table", path = "hash.rs")]
 mod implements;
+mod external;
 
+#[repr(C)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum ItemKind {
     VirtualRange,
@@ -32,5 +35,5 @@ pub trait RoutingTable {
 
     fn remove(&mut self, cidr: &Ipv4Net) -> Option<Item>;
 
-    fn find(&self, addr: Ipv4Addr) -> Option<&Item>;
+    fn find(&self, addr: Ipv4Addr) -> Option<Cow<Item>>;
 }
