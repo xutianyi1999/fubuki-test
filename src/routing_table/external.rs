@@ -132,7 +132,7 @@ type CreateFn = extern "C" fn() -> *mut c_void;
 type DropFn = extern "C" fn(*mut c_void);
 
 // self reference
-struct ExternalRoutingTable {
+pub struct ExternalRoutingTable {
     handle: *mut c_void,
     _lib: Library,
     add_fn: Symbol<'static, AddFn>,
@@ -140,6 +140,10 @@ struct ExternalRoutingTable {
     find_fn: Symbol<'static, FindFn>,
     drop_fn: Symbol<'static, DropFn>,
 }
+
+unsafe impl Send for ExternalRoutingTable{}
+
+unsafe impl Sync for ExternalRoutingTable{}
 
 impl RoutingTable for ExternalRoutingTable {
     fn add(&mut self, item: Item) {

@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::cell::SyncUnsafeCell;
 use std::mem::size_of;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::Range;
@@ -58,6 +59,25 @@ impl NodeListOps for NodeList {
         self.binary_search_by_key(addr, |node| node.node.virtual_addr)
             .ok()
             .map(|v| &self[v])
+    }
+}
+
+enum RoutingTableEnum<A, B> {
+    Internal(ArcSwap<A>),
+    External(SyncUnsafeCell<B>)
+}
+
+enum RoutingTableRefEnum<'a, A, B> {
+    Cache(Cache<&'a ArcSwap<A>, Arc<A>>),
+    Ref(&'a SyncUnsafeCell<B>)
+}
+
+impl <'a, A, B> From<&'a RoutingTableEnum<A, B>> for RoutingTableRefEnum<'a, A, B> {
+    fn from(value: &'a RoutingTableEnum<A, B>) -> Self {
+        match value {
+            RoutingTableEnum::Internal(v) => RoutingTableRefEnum::Cache(Cache::new(v)),
+            RoutingTableEnum::External(v) => RoutingTableRefEnum::Ref(v)
+        }
     }
 }
 
@@ -324,8 +344,8 @@ fn find_route<RT: RoutingTable>(rt: &RT, mut dst_addr: Ipv4Addr) -> Option<(Ipv4
     Some((dst_addr, item))
 }
 
-struct PacketSender<'a, RT, Tun, K> {
-    rt_cache: Cache<&'a ArcSwap<RT>, Arc<RT>>,
+struct PacketSender<'a, InterRT, ExternRT, Tun, K> {
+    rt_ref: RoutingTableRefEnum<'a, InterRT, ExternRT>,
     interfaces: &'a [&'a Interface<K>],
     nodes_cache: Vec<Cache<&'a ArcSwap<NodeList>, Arc<NodeList>>>,
     tun: &'a Tun
@@ -337,19 +357,20 @@ enum Direction {
     Input
 }
 
-impl <'a, RT, Tun, K> PacketSender<'a, RT, Tun, K>
+impl <'a, InterRT, ExternRT, Tun, K> PacketSender<'a, InterRT, ExternRT, Tun, K>
     where
-        RT: RoutingTable,
+        InterRT: RoutingTable,
+        ExternRT: RoutingTable,
         Tun: TunDevice,
         K: Cipher
 {
     fn new(
-        rt: &'a ArcSwap<RT>,
+        rt: &'a RoutingTableEnum<InterRT, ExternRT>,
         interfaces: &'a [&'a Interface<K>],
         tun: &'a Tun
     ) -> Self {
         PacketSender {
-            rt_cache: Cache::new(rt),
+            rt_ref: RoutingTableRefEnum::from(rt),
             interfaces,
             nodes_cache: interfaces.iter().map(|v| Cache::new(&v.node_list)).collect::<Vec<_>>(),
             tun
@@ -369,9 +390,12 @@ impl <'a, RT, Tun, K> PacketSender<'a, RT, Tun, K>
         let src_addr = get_ip_src_addr(packet)?;
         let dst_addr = get_ip_dst_addr(packet)?;
 
-        let rt = &**self.rt_cache.load();
+        let opt = match &mut self.rt_ref {
+            RoutingTableRefEnum::Cache(v) => find_route(&**v.load(), dst_addr),
+            RoutingTableRefEnum::Ref(v) => unsafe { find_route(&mut *v.get(), dst_addr) }
+        };
 
-        let (dst_addr, item) = match find_route(rt, dst_addr) {
+        let (dst_addr, item) = match opt {
             None => {
                 if direction == Direction::Input && allow_packet_not_in_rules_send_to_kernel {
                     self.tun.send_packet(&mut buff[packet_range]).await.context("error send packet to tun")?;
@@ -447,15 +471,16 @@ impl <'a, RT, Tun, K> PacketSender<'a, RT, Tun, K>
     }
 }
 
-async fn tun_handler<T, K, RT>(
+async fn tun_handler<T, K, InterRT, ExternRT>(
     tun: T,
-    routing_table: Arc<ArcSwap<RT>>,
+    routing_table: Arc<RoutingTableEnum<InterRT, ExternRT>>,
     interfaces: Vec<Arc<Interface<K>>>,
 ) -> Result<()>
-where
-    T: TunDevice + Send + Sync + 'static,
-    K: Cipher + Clone + Send + Sync + 'static,
-    RT: RoutingTable + Send + Sync + 'static
+    where
+        T: TunDevice + Send + Sync + 'static,
+        K: Cipher + Clone + Send + Sync + 'static,
+        InterRT: RoutingTable + Send + Sync + 'static,
+        ExternRT: RoutingTable + Send + Sync + 'static
 {
     let join: JoinHandle<Result<()>> = tokio::spawn(async move {
         let interfaces = interfaces.iter().map(|v| &**v).collect::<Vec<_>>();
@@ -486,7 +511,7 @@ where
     join.await?.context("tun handler error")
 }
 
-fn through_virtual_gateway<RT: RoutingTable>(routing_table: &RT, dst: SocketAddr) -> bool {
+fn through_virtual_gateway<RT: RoutingTable + ?Sized>(routing_table: &RT, dst: SocketAddr) -> bool {
     match dst {
         SocketAddr::V4(addr) => {
            routing_table.find(*addr.ip()).is_some_and(|i| i.extend.item_kind != Some(ItemKind::AllowedIpsRoute))
@@ -495,17 +520,18 @@ fn through_virtual_gateway<RT: RoutingTable>(routing_table: &RT, dst: SocketAddr
     }
 }
 
-async fn udp_handler<T, K, RT>(
+async fn udp_handler<T, K, InterRT, ExternRT>(
     config: &'static NodeConfigFinalize<K>,
     group: &'static TargetGroupFinalize<K>,
-    table: Arc<ArcSwap<RT>>,
+    table: Arc<RoutingTableEnum<InterRT, ExternRT>>,
     interface: Arc<Interface<K>>,
     tun: T,
 ) -> Result<()>
 where
     T: TunDevice + Send + Sync + 'static,
     K: Cipher + Clone + Send + Sync + 'static,
-    RT: RoutingTable + Send + Sync + 'static,
+    InterRT: RoutingTable + Send + Sync + 'static,
+    ExternRT: RoutingTable + Send + Sync + 'static
 {
     let heartbeat_schedule = async {
         let interface = interface.clone();
@@ -590,7 +616,15 @@ where
                                         let addr = ext_node.peer_addr.load();
 
                                         let packet = packet.as_slice();
-                                        let rt = &*table.load_full();
+                                        let t;
+
+                                        let rt: &(dyn RoutingTable + Sync) = match &*table {
+                                            RoutingTableEnum::Internal(v) => {
+                                                t = v.load_full();
+                                                &*t
+                                            },
+                                            RoutingTableEnum::External(v) => unsafe { &*v.get() }
+                                        };
 
                                         macro_rules! send {
                                             ($peer_addr: expr) => {
@@ -738,9 +772,22 @@ where
                                     let mut hc_guard = node.hc.write();
 
                                     if hc_guard.response(seq).is_some() {
+                                        let through_vgateway = || {
+                                            let t;
+                                            let rt: &dyn RoutingTable = match &*table {
+                                                RoutingTableEnum::Internal(v) => {
+                                                    t = v.load();
+                                                    &**t
+                                                },
+                                                RoutingTableEnum::External(v) => unsafe { &*v.get() }
+                                            };
+
+                                            through_virtual_gateway(rt, peer_addr)
+                                        };
+
                                         if node.udp_status.load() == UdpStatus::Unavailable &&
                                             hc_guard.packet_continuous_recv_count >= config.udp_heartbeat_continuous_recv &&
-                                            !through_virtual_gateway(&**table.load(), peer_addr)
+                                            !through_vgateway()
                                         {
                                             drop(hc_guard);
 
@@ -861,16 +908,21 @@ where
     Ok((stream, group_info))
 }
 
-fn update_tun_addr<T: TunDevice, K, RT: RoutingTable + Clone>(
+fn update_tun_addr<T, K, InterRT, ExternRt>(
     tun: &T,
-    rt: &ArcSwap<RT>,
+    rt: &RoutingTableEnum<InterRT, ExternRt>,
     interface: &Interface<K>,
     allowed_ips: &[Ipv4Net],
     old_addr: VirtualAddr,
     addr: VirtualAddr,
     old_cidr: Ipv4Net,
     cidr: Ipv4Net,
-) -> Result<()> {
+) -> Result<()>
+    where
+        T: TunDevice,
+        InterRT: RoutingTable + Clone,
+        ExternRt: RoutingTable
+{
     let item = Item {
         cidr,
         gateway: Ipv4Addr::UNSPECIFIED,
@@ -891,9 +943,7 @@ fn update_tun_addr<T: TunDevice, K, RT: RoutingTable + Clone>(
         })
         .collect::<Vec<_>>();
 
-    rt.rcu(|v| {
-        let mut t = (**v).clone();
-
+    let update_route = |t: &mut dyn RoutingTable| {
         // update default tun route
         if cidr != old_cidr {
             t.remove(&old_cidr);
@@ -907,8 +957,18 @@ fn update_tun_addr<T: TunDevice, K, RT: RoutingTable + Clone>(
                 t.add(i.clone());
             }
         }
-        t
-    });
+    };
+
+    match rt {
+        RoutingTableEnum::Internal(rt) => {
+            rt.rcu(|v| {
+                let mut t = (**v).clone();
+                update_route(&mut t);
+                t
+            });
+        }
+        RoutingTableEnum::External(rt) => unsafe { update_route(&mut *rt.get()) }
+    }
 
     if addr != old_addr ||
         cidr != old_cidr {
@@ -921,10 +981,10 @@ fn update_tun_addr<T: TunDevice, K, RT: RoutingTable + Clone>(
     Ok(())
 }
 
-async fn tcp_handler<T, K, RT>(
+async fn tcp_handler<T, K, InterRT, ExternRt>(
     config: &'static NodeConfigFinalize<K>,
     group: &'static TargetGroupFinalize<K>,
-    routing_table: Arc<ArcSwap<RT>>,
+    routing_table: Arc<RoutingTableEnum<InterRT, ExternRt>>,
     interface: Arc<Interface<K>>,
     tun: T,
     channel_rx: Option<Receiver<Bytes>>,
@@ -934,7 +994,8 @@ async fn tcp_handler<T, K, RT>(
 where
     T: TunDevice + Clone + Send + Sync + 'static,
     K: Cipher + Clone + Send + Sync + 'static,
-    RT: RoutingTable + Clone + Send + Sync + 'static
+    InterRT: RoutingTable + Clone + Send + Sync + 'static,
+    ExternRt: RoutingTable + Send + Sync + 'static
 {
     let join: JoinHandle<Result<()>> = tokio::spawn(async move {
         let mut sys_route_is_sync = false;
@@ -1305,26 +1366,39 @@ pub async fn start<K, T>(config: NodeConfigFinalize<K>, tun: T) -> Result<()>
     let tun = Arc::new(tun);
     tun.set_mtu(config.mtu)?;
 
-    let mut rt = routing_table::create();
+    let init_routing_table = |rt: &mut dyn RoutingTable| {
+        for (index, group) in config.groups.iter().enumerate() {
+            for (dst, cidrs) in &group.ips {
+                for cidr in cidrs {
+                    let item = Item {
+                        cidr: *cidr,
+                        gateway: *dst,
+                        interface_index: index,
+                        extend: routing_table::Extend {
+                            item_kind: Some(ItemKind::IpsRoute)
+                        }
+                    };
 
-    for (index, group) in config.groups.iter().enumerate() {
-        for (dst, cidrs) in &group.ips {
-            for cidr in cidrs {
-                let item = Item {
-                    cidr: *cidr,
-                    gateway: *dst,
-                    interface_index: index,
-                    extend: routing_table::Extend {
-                        item_kind: Some(ItemKind::IpsRoute)
-                    }
-                };
-
-                rt.add(item);
+                    rt.add(item);
+                }
             }
         }
-    }
+    };
 
-    let rt = Arc::new(ArcSwap::from_pointee(rt));
+    let rt = match &config.external_routing_table {
+        None => {
+            let mut rt = routing_table::create();
+            init_routing_table(&mut rt);
+            RoutingTableEnum::Internal(ArcSwap::from_pointee(rt))
+        }
+        Some(path) => {
+            let mut rt = routing_table::external::create(path)?;
+            init_routing_table(&mut rt);
+            RoutingTableEnum::External(SyncUnsafeCell::new(rt))
+        }
+    };
+
+    let rt = Arc::new(rt);
 
     let mut future_list: Vec<BoxFuture<Result<()>>> = Vec::new();
     let mut interfaces = Vec::with_capacity(config.groups.len());

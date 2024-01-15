@@ -5,6 +5,7 @@
 #![feature(get_mut_unchecked)]
 #![feature(impl_trait_in_assoc_type)]
 #![feature(lazy_cell)]
+#![feature(sync_unsafe_cell)]
 
 #![cfg_attr(all(target_os = "windows", feature = "gui"), windows_subsystem = "windows")]
 
@@ -184,6 +185,7 @@ struct NodeConfig {
     reconnect_interval_secs: Option<u64>,
     udp_socket_recv_buffer_size: Option<usize>,
     udp_socket_send_buffer_size: Option<usize>,
+    external_routing_table: Option<PathBuf>,
     groups: Vec<TargetGroup>,
     features: Option<NodeConfigFeature>,
 }
@@ -223,6 +225,7 @@ struct NodeConfigFinalize<K> {
     reconnect_interval: Duration,
     udp_socket_recv_buffer_size: Option<usize>,
     udp_socket_send_buffer_size: Option<usize>,
+    external_routing_table: Option<PathBuf>,
     groups: Vec<TargetGroupFinalize<K>>,
     features: NodeConfigFeatureFinalize,
 }
@@ -350,6 +353,7 @@ impl TryFrom<NodeConfig> for NodeConfigFinalize<CipherEnum> {
             udp_socket_recv_buffer_size: config.udp_socket_recv_buffer_size,
             udp_socket_send_buffer_size: config.udp_socket_send_buffer_size,
             groups: list,
+            external_routing_table: config.external_routing_table,
             features: {
                 let features = config.features.as_ref();
 

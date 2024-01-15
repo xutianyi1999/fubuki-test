@@ -7,7 +7,7 @@ pub use implements::create;
 #[cfg_attr(not(feature = "hash-routing-table"), path = "array.rs")]
 #[cfg_attr(feature = "hash-routing-table", path = "hash.rs")]
 mod implements;
-mod external;
+pub mod external;
 
 #[repr(C)]
 #[derive(Copy, Clone, Eq, PartialEq)]
