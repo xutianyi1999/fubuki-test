@@ -773,16 +773,10 @@ where
 
                                     if hc_guard.response(seq).is_some() {
                                         let through_vgateway = || {
-                                            let t;
-                                            let rt: &dyn RoutingTable = match &*table {
-                                                RoutingTableEnum::Internal(v) => {
-                                                    t = v.load();
-                                                    &**t
-                                                },
-                                                RoutingTableEnum::External(v) => unsafe { &*v.get() }
-                                            };
-
-                                            through_virtual_gateway(rt, peer_addr)
+                                            match &*table {
+                                                RoutingTableEnum::Internal(v) => through_virtual_gateway(&**v.load(), peer_addr),
+                                                RoutingTableEnum::External(v) => through_virtual_gateway(unsafe { &*v.get() }, peer_addr)
+                                            }
                                         };
 
                                         if node.udp_status.load() == UdpStatus::Unavailable &&
