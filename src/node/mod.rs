@@ -333,13 +333,13 @@ enum TransferType {
     Broadcast,
 }
 
-fn find_route<RT: RoutingTable>(rt: &RT, mut dst_addr: Ipv4Addr) -> Option<(Ipv4Addr, Cow<Item>)> {
-    let mut item = rt.find(dst_addr)?;
+fn find_route<RT: RoutingTable>(rt: &RT, src_addr: Ipv4Addr, mut dst_addr: Ipv4Addr) -> Option<(Ipv4Addr, Cow<Item>)> {
+    let mut item = rt.find(src_addr, dst_addr)?;
 
     // is route on link
     while item.gateway != Ipv4Addr::UNSPECIFIED {
         dst_addr = item.gateway;
-        item = rt.find(dst_addr)?;
+        item = rt.find(src_addr, dst_addr)?;
     }
     Some((dst_addr, item))
 }
@@ -391,8 +391,8 @@ impl <'a, InterRT, ExternRT, Tun, K> PacketSender<'a, InterRT, ExternRT, Tun, K>
         let dst_addr = get_ip_dst_addr(packet)?;
 
         let opt = match &mut self.rt_ref {
-            RoutingTableRefEnum::Cache(v) => find_route(&**v.load(), dst_addr),
-            RoutingTableRefEnum::Ref(v) => unsafe { find_route(&mut *v.get(), dst_addr) }
+            RoutingTableRefEnum::Cache(v) => find_route(&**v.load(), src_addr, dst_addr),
+            RoutingTableRefEnum::Ref(v) => unsafe { find_route(&mut *v.get(), src_addr, dst_addr) }
         };
 
         let (dst_addr, item) = match opt {
@@ -437,7 +437,7 @@ impl <'a, InterRT, ExternRT, Tun, K> PacketSender<'a, InterRT, ExternRT, Tun, K>
 
         match transfer_type {
             TransferType::Unicast(addr) => {
-                debug!("tun handler: packet {}->{}; gateway: {}", src_addr, dst_addr, item.gateway);
+                debug!("tun handler: packet {}->{}; gateway: {}", src_addr, dst_addr, addr);
 
                 if interface_addr == addr {
                     return self.tun.send_packet(&mut buff[packet_range]).await.context("error send packet to tun");
@@ -511,12 +511,12 @@ async fn tun_handler<T, K, InterRT, ExternRT>(
     join.await?.context("tun handler error")
 }
 
-fn through_virtual_gateway<RT: RoutingTable + ?Sized>(routing_table: &RT, dst: SocketAddr) -> bool {
-    match dst {
-        SocketAddr::V4(addr) => {
-           routing_table.find(*addr.ip()).is_some_and(|i| i.extend.item_kind != Some(ItemKind::AllowedIpsRoute))
+fn through_virtual_gateway<RT: RoutingTable + ?Sized>(routing_table: &RT, src: SocketAddr, dst: SocketAddr) -> bool {
+    match (src, dst) {
+        (SocketAddr::V4(src), SocketAddr::V4(dst)) => {
+           routing_table.find(*src.ip(), *dst.ip()).is_some_and(|i| i.extend.item_kind != Some(ItemKind::AllowedIpsRoute))
         }
-        SocketAddr::V6(_) => false
+        _ => false
     }
 }
 
@@ -533,6 +533,8 @@ where
     InterRT: RoutingTable + Send + Sync + 'static,
     ExternRT: RoutingTable + Send + Sync + 'static
 {
+    let lan_ip_addr = group.lan_ip_addr.unwrap();
+
     let heartbeat_schedule = async {
         let interface = interface.clone();
         let table = table.clone();
@@ -625,10 +627,10 @@ where
                                             },
                                             RoutingTableEnum::External(v) => unsafe { &*v.get() }
                                         };
-
+                                        
                                         macro_rules! send {
                                             ($peer_addr: expr) => {
-                                                if !through_virtual_gateway(rt, $peer_addr) {
+                                                if !through_virtual_gateway(rt, SocketAddr::new(lan_ip_addr, 0), $peer_addr) {
                                                     socket.send_to(&packet, $peer_addr).await?;
                                                 }
                                             };
@@ -773,9 +775,11 @@ where
 
                                     if hc_guard.response(seq).is_some() {
                                         let through_vgateway = || {
+                                            let src = SocketAddr::new(lan_ip_addr, 0);
+
                                             match &*table {
-                                                RoutingTableEnum::Internal(v) => through_virtual_gateway(&**v.load(), peer_addr),
-                                                RoutingTableEnum::External(v) => through_virtual_gateway(unsafe { &*v.get() }, peer_addr)
+                                                RoutingTableEnum::Internal(v) => through_virtual_gateway(&**v.load(), src, peer_addr),
+                                                RoutingTableEnum::External(v) => through_virtual_gateway(unsafe { &*v.get() }, src, peer_addr)
                                             }
                                         };
 
