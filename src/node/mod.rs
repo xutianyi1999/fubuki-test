@@ -1383,10 +1383,6 @@ pub async fn start<K, T>(config: NodeConfigFinalize<K>, tun: T) -> Result<()>
         }
     };
 
-    let mut external_routingtable_ctx = routing_table::external::Context {
-        interfaces: Vec::new()
-    };
-
     let rt = match &config.external_routing_table {
         None => {
             let mut rt = routing_table::internal::create();
@@ -1394,7 +1390,7 @@ pub async fn start<K, T>(config: NodeConfigFinalize<K>, tun: T) -> Result<()>
             RoutingTableEnum::Internal(ArcSwap::from_pointee(rt))
         }
         Some(path) => {
-            let mut rt = routing_table::external::create::<K>(path, &external_routingtable_ctx)?;
+            let mut rt = routing_table::external::create::<K>(path)?;
             init_routing_table(&mut rt);
             RoutingTableEnum::External(SyncUnsafeCell::new(rt))
         }
@@ -1499,7 +1495,9 @@ pub async fn start<K, T>(config: NodeConfigFinalize<K>, tun: T) -> Result<()>
         }
     };
 
-    external_routingtable_ctx.interfaces = interfaces.clone();
+    if let RoutingTableEnum::External(t) = &*rt {
+        unsafe { (*t.get()).update_interfaces(interfaces.clone()); }
+    }
     
     let tun_handler_fut = tun_handler(tun, rt, interfaces.clone());
     future_list.push(Box::pin(tun_handler_fut));
