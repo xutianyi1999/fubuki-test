@@ -3,7 +3,7 @@ use std::ffi::{c_void, c_char, CString};
 use std::mem::{MaybeUninit, transmute};
 use std::net::Ipv4Addr;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use anyhow::Result;
 use ipnet::Ipv4Net;
@@ -128,14 +128,15 @@ impl From<Item> for ItemC {
 }
 
 pub struct Context<K> {
-    interfaces: Vec<Arc<Interface<K>>>
+    interfaces: OnceLock<Vec<Arc<Interface<K>>>>
 }
 
 pub extern "C" fn interfaces_info<K>(
     ctx: &Context<K>,
     info_json: *mut c_char
 ) {
-    let interfaces = ctx.interfaces.as_slice();
+    let empty_interfaces = Vec::new();
+    let interfaces = ctx.interfaces.get().unwrap_or(&empty_interfaces);
     let mut list = Vec::with_capacity(interfaces.len());
 
     for inter in interfaces {
@@ -169,8 +170,8 @@ unsafe impl <K: Send> Send for ExternalRoutingTable<K> {}
 unsafe impl <K: Sync> Sync for ExternalRoutingTable<K> {}
 
 impl <K> ExternalRoutingTable<K> {
-    pub fn update_interfaces(&mut self, interfaces: Vec<Arc<Interface<K>>>) {
-        self.ctx.interfaces = interfaces;
+    pub fn update_interfaces(&self, interfaces: Vec<Arc<Interface<K>>>) {
+        let _ = self.ctx.interfaces.set(interfaces);
     }
 }
 
@@ -200,7 +201,7 @@ pub fn create<K>(
     lib_path: &Path,
 ) -> Result<ExternalRoutingTable<K>> {
     let ctx = Context::<K> {
-        interfaces: Vec::new()
+        interfaces: OnceLock::new()
     };
 
     let ctx = Box::new(ctx);
