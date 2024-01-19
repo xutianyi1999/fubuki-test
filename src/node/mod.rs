@@ -33,7 +33,7 @@ use tokio::sync::mpsc::{Receiver, Sender, unbounded_channel};
 use tokio::task::JoinHandle;
 use tokio::time;
 
-use crate::{Cipher, NodeConfigFinalize, NodeInfoType, ProtocolMode, routing_table, TargetGroupFinalize, ternary};
+use crate::{Cipher, NodeConfigFinalize, NodeInfoType, ProtocolMode, routing_table, TargetGroupFinalize};
 use crate::common::{allocator, utc_to_str};
 use crate::common::allocator::Bytes;
 use crate::common::cipher::CipherContext;
@@ -143,7 +143,7 @@ impl AtomicCidr {
     }
 }
 
-struct Interface<K> {
+pub struct Interface<K> {
     index: usize,
     node_name: String,
     group_name: ArcSwapOption<String>,
@@ -163,7 +163,7 @@ struct Interface<K> {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-struct InterfaceInfo {
+pub struct InterfaceInfo {
     index: usize,
     node_name: String,
     group_name: Option<String>,
@@ -1383,14 +1383,18 @@ pub async fn start<K, T>(config: NodeConfigFinalize<K>, tun: T) -> Result<()>
         }
     };
 
+    let mut external_routingtable_ctx = routing_table::external::Context {
+        interfaces: Vec::new()
+    };
+
     let rt = match &config.external_routing_table {
         None => {
-            let mut rt = routing_table::create();
+            let mut rt = routing_table::internal::create();
             init_routing_table(&mut rt);
             RoutingTableEnum::Internal(ArcSwap::from_pointee(rt))
         }
         Some(path) => {
-            let mut rt = routing_table::external::create(path)?;
+            let mut rt = routing_table::external::create::<K>(path, &external_routingtable_ctx)?;
             init_routing_table(&mut rt);
             RoutingTableEnum::External(SyncUnsafeCell::new(rt))
         }
@@ -1495,6 +1499,8 @@ pub async fn start<K, T>(config: NodeConfigFinalize<K>, tun: T) -> Result<()>
         }
     };
 
+    external_routingtable_ctx.interfaces = interfaces.clone();
+    
     let tun_handler_fut = tun_handler(tun, rt, interfaces.clone());
     future_list.push(Box::pin(tun_handler_fut));
     if !config.features.disable_api_server {

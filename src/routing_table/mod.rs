@@ -2,11 +2,9 @@ use std::borrow::Cow;
 use std::net::Ipv4Addr;
 use ipnet::Ipv4Net;
 
-pub use implements::create;
-
 #[cfg_attr(not(feature = "hash-routing-table"), path = "array.rs")]
 #[cfg_attr(feature = "hash-routing-table", path = "hash.rs")]
-mod implements;
+pub mod internal;
 pub mod external;
 
 #[repr(C)]

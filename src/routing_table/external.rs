@@ -1,13 +1,15 @@
 use std::borrow::Cow;
-use std::ffi::c_void;
+use std::ffi::{c_void, c_char, CString};
 use std::mem::{MaybeUninit, transmute};
 use std::net::Ipv4Addr;
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::Result;
 use ipnet::Ipv4Net;
 use libloading::{Library, Symbol};
 
+use crate::node::{Interface, InterfaceInfo};
 use crate::routing_table::{Item, ItemKind, RoutingTable};
 
 #[repr(C)]
@@ -125,10 +127,30 @@ impl From<Item> for ItemC {
     }
 }
 
+pub struct Context<K> {
+    pub interfaces: Vec<Arc<Interface<K>>>
+}
+
+pub extern "C" fn interfaces_info<K>(
+    ctx: &Context<K>,
+    info_json: *mut c_char
+) {
+    let interfaces = ctx.interfaces.as_slice();
+    let mut list = Vec::with_capacity(interfaces.len());
+
+    for inter in interfaces {
+        list.push(InterfaceInfo::from(&**inter));
+    }
+
+    let out = CString::new(serde_json::to_string(&list).unwrap()).unwrap();
+    let out = out.as_bytes_with_nul();
+    unsafe { std::ptr::copy(out.as_ptr(), info_json as *mut u8, out.len()) };
+}
+
 type AddFn = extern "C" fn(handle: *mut c_void, item_c: ItemC);
 type RemoveFn = extern "C" fn(handle: *mut c_void, cidr: *const CidrC) -> OptionC<ItemC>;
 type FindFn = extern "C" fn(handle: *mut c_void, src: u32, to: u32) -> OptionC<*const ItemC>;
-type CreateFn = extern "C" fn() -> *mut c_void;
+type CreateFn = extern "C" fn(ctx: *const c_void, interfaces_info_fn: *const c_void) -> *mut c_void;
 type DropFn = extern "C" fn(*mut c_void);
 
 // self reference
@@ -167,7 +189,10 @@ impl Drop for ExternalRoutingTable {
     }
 }
 
-pub fn create(lib_path: &Path) -> Result<ExternalRoutingTable> {
+pub fn create<K>(
+    lib_path: &Path,
+    ctx: &Context<K>
+) -> Result<ExternalRoutingTable> {
     unsafe {
         let lib = Library::new(lib_path)?;
 
@@ -177,7 +202,7 @@ pub fn create(lib_path: &Path) -> Result<ExternalRoutingTable> {
         let find_fn = transmute(lib.get::<FindFn>(b"find_route")?);
         let drop_fn = transmute(lib.get::<DropFn>(b"drop_routing_table")?);
 
-        let handle = create_fn();
+        let handle = create_fn(ctx as *const Context<K> as *const c_void, interfaces_info::<K> as *const c_void);
 
         let rt = ExternalRoutingTable {
             handle,

@@ -33,8 +33,9 @@ use crate::common::cipher::{Cipher, CipherEnum, NoOpCipher, RotationCipher, XorC
 use crate::common::net::get_interface_addr;
 use crate::common::net::protocol::{NetProtocol, ProtocolMode, SERVER_VIRTUAL_ADDR, VirtualAddr};
 
-mod node;
+#[macro_use]
 mod common;
+mod node;
 mod server;
 mod tun;
 
@@ -47,7 +48,7 @@ mod nat;
 mod web;
 mod routing_table;
 
-pub mod ffi_export;
+mod ffi_export;
 
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
@@ -231,7 +232,7 @@ struct NodeConfigFinalize<K> {
 }
 
 #[derive(Clone)]
-pub struct NodeConfigFeatureFinalize {
+struct NodeConfigFeatureFinalize {
     disable_hosts_operation: bool,
     disable_signal_handling: bool,
     disable_route_operation: bool,
