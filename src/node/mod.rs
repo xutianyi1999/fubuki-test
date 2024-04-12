@@ -1502,6 +1502,7 @@ pub async fn start<K, T>(config: NodeConfigFinalize<K>, tun: T) -> Result<()>
         let arc = Arc::new(tokio::sync::Mutex::new(SystemRouteHandle::new()?));
         Some(arc)
     };
+    #[allow(unused)]
     let tun_index = tun.get_index();
 
     for (index, group) in config.groups.iter().enumerate() {
@@ -1561,6 +1562,7 @@ pub async fn start<K, T>(config: NodeConfigFinalize<K>, tun: T) -> Result<()>
         let interface = Arc::new(interface);
         interfaces.push(interface.clone());
 
+        #[allow(unused_mut)]
         let mut routes = Vec::new();
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]

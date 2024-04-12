@@ -495,7 +495,6 @@ fn logger_init() -> Result<()> {
     Ok(())
 }
 
-#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 pub fn launch(args: Args) -> Result<()> {
     use tokio::runtime::Runtime;
 
@@ -525,6 +524,7 @@ pub fn launch(args: Args) -> Result<()> {
         }
         Args::Node { cmd } => {
             match cmd {
+                #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
                 NodeCmd::Daemon { config_path } => {
                     let config: NodeConfig = load_config(&config_path)?;
                     let c: NodeConfigFinalize<Key> = NodeConfigFinalize::try_from(config)?;
@@ -542,6 +542,10 @@ pub fn launch(args: Args) -> Result<()> {
                         .build()?;
 
                     rt.block_on(node::info(&api, info_type))?;
+                }
+                #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+                _ => {
+                    return Err(anyhow!("fubuki does not support the current platform"))
                 }
             }
         }

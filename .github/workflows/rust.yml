@@ -21,7 +21,7 @@ jobs:
         include:
           - target: aarch64-linux-android
             os: ubuntu-latest
-            build_tool: cargo-zigbuild
+            build_tool: cross
 
     runs-on: ${{ matrix.os }}
     steps:
