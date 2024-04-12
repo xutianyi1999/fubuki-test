@@ -21,7 +21,7 @@ use hyper::{Method, Request};
 use hyper_util::rt::TokioIo;
 use ipnet::Ipv4Net;
 use linear_map::LinearMap;
-use net_route::Route;
+use sys_route::Route;
 use parking_lot::{Mutex, RwLock};
 use prettytable::{row, Table};
 use rand::random;
@@ -47,6 +47,9 @@ use crate::routing_table::{Item, ItemKind, RoutingTable};
 use crate::tun::TunDevice;
 
 mod api;
+
+#[cfg_attr(any(target_os = "windows", target_os = "linux", target_os = "macos"), path = "sys_route.rs")]
+#[cfg_attr(not(any(target_os = "windows", target_os = "linux", target_os = "macos")), path = "fake_sys_route.rs")]
 mod sys_route;
 
 type NodeList = Vec<ExtendedNode>;
@@ -1070,6 +1073,7 @@ where
         // use defer must use atomic
         let is_add_nat = AtomicBool::new(false);
 
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
         let host_records = Arc::new(Mutex::new(HashSet::new()));
 
         // todo requires Arc + Mutex to pass compile
@@ -1078,6 +1082,7 @@ where
         defer! {
             debug!("exiting tcp handler function ...");
 
+            #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
             if !config.features.disable_hosts_operation {
                 let guard = host_records.lock();
 
@@ -1230,7 +1235,10 @@ where
                     let mut notified = notified.clone();
                     let interface = interface.clone();
                     let inner_channel_tx = inner_channel_tx.clone();
+
+                    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
                     let host_records = host_records.clone();
+
                     let tun = tun.clone();
                     let routing_table = routing_table.clone();
 
@@ -1273,6 +1281,7 @@ where
 
                                         new_list.sort_unstable_by_key(|n| n.node.virtual_addr);
 
+                                        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
                                         if !config.features.disable_hosts_operation {
                                             let host_key = format!("FUBUKI-{}", group_info.name);
                                             let mut hb = hostsfile::HostsBuilder::new(&host_key);
