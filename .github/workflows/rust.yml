@@ -34,7 +34,7 @@ jobs:
           target: ${{ matrix.target }}
           # (required)
           bin: fubuki
-          include: target/release/libfubukil.so
+          include: target/${{ matrix.target }}/release/libfubukil.so
           # (optional) On which platform to distribute the `.tar.gz` file.
           # [default value: unix]
           # [possible values: all, unix, windows, none]
