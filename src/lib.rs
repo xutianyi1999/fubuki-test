@@ -14,7 +14,6 @@ extern crate log;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::Once;
 use std::time::Duration;
 
 use ahash::HashMap;
@@ -27,7 +26,6 @@ use log4rs::config::{Appender, Root};
 use log4rs::encode::pattern::PatternEncoder;
 use log::LevelFilter;
 use serde::{de, Deserialize};
-use tokio::runtime::Runtime;
 
 use crate::common::cipher::{Cipher, CipherEnum, NoOpCipher, RotationCipher, XorCipher};
 use crate::common::net::get_interface_addr;
@@ -499,7 +497,9 @@ fn logger_init() -> Result<()> {
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 pub fn launch(args: Args) -> Result<()> {
-    static LOGGER_INIT: Once = Once::new();
+    use tokio::runtime::Runtime;
+
+    static LOGGER_INIT: std::sync::Once = std::sync::Once::new();
 
     LOGGER_INIT.call_once(|| {
         logger_init().expect("logger initialization failed");

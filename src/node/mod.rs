@@ -8,7 +8,11 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::time::Duration;
 use std::path::Path;
 
-use ahash::{HashMap, HashSet, HashSetExt};
+use ahash::HashMap;
+
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+use ahash::{HashSet, HashSetExt};
+
 use anyhow::{anyhow, Context as AnyhowContext};
 use anyhow::Result;
 use arc_swap::{ArcSwap, ArcSwapOption, Cache};
@@ -22,7 +26,7 @@ use hyper_util::rt::TokioIo;
 use ipnet::Ipv4Net;
 use linear_map::LinearMap;
 use sys_route::Route;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::RwLock;
 use prettytable::{row, Table};
 use rand::random;
 use scopeguard::defer;
@@ -1074,7 +1078,7 @@ where
         let is_add_nat = AtomicBool::new(false);
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-        let host_records = Arc::new(Mutex::new(HashSet::new()));
+        let host_records = Arc::new(parking_lot::Mutex::new(HashSet::new()));
 
         // todo requires Arc + Mutex to pass compile
         let channel_rx = channel_rx.map(|v| Arc::new(tokio::sync::Mutex::new(v)));
@@ -1559,6 +1563,7 @@ pub async fn start<K, T>(config: NodeConfigFinalize<K>, tun: T) -> Result<()>
 
         let mut routes = Vec::new();
 
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
         for (gateway, cidrs) in &group.ips {
             for cidr in cidrs {
                 let route = Route::new(IpAddr::V4(cidr.network()), cidr.prefix_len())
