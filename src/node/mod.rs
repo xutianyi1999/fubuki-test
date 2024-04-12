@@ -1647,7 +1647,7 @@ pub async fn start<K, T>(config: NodeConfigFinalize<K>, tun: T) -> Result<()>
     Ok(())
 }
 
-pub(crate) async fn info(api_addr: &str, info_type: NodeInfoType) -> Result<()> {
+pub async fn info(api_addr: &str, info_type: NodeInfoType) -> Result<()> {
     let req = Request::builder()
         .method(Method::GET)
         .uri(format!("http://{}/info", api_addr))
