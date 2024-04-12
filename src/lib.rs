@@ -237,6 +237,7 @@ struct NodeConfigFinalize<K> {
 
 #[derive(Clone)]
 struct NodeConfigFeatureFinalize {
+    #[allow(unused)]
     disable_hosts_operation: bool,
     disable_signal_handling: bool,
     disable_route_operation: bool,

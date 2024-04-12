@@ -14,6 +14,7 @@ impl SystemRouteHandle {
         Ok(())
     }
 
+    #[allow(unused)]
     pub async fn clear(&mut self) -> Result<()> {
         Ok(())
     }
