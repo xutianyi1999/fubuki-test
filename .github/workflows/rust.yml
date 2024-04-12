@@ -27,9 +27,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
-          sudo apt update -y
-          sudo apt install -y musl-tools
-        if: matrix.target == 'x86_64-unknown-linux-musl'
+          cargo install cross --git https://github.com/cross-rs/cross
+        if: matrix.target == 'aarch64-linux-android'
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           target: ${{ matrix.target }}
