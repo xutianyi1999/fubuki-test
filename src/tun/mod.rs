@@ -4,8 +4,10 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 pub use os::create;
 
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 #[cfg_attr(target_os = "windows", path = "windows.rs")]
 #[cfg_attr(target_os = "linux", path = "linux.rs")]
 #[cfg_attr(target_os = "macos", path = "macos.rs")]

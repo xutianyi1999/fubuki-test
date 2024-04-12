@@ -49,11 +49,13 @@ byte-unit = { version = "5", features = ["serde"] }
 
 linear-map = { git = "https://github.com/contain-rs/linear-map.git" }
 klask = { git = "https://github.com/xosxos/klask.git", optional = true }
-net-route = { git = "https://github.com/johnyburd/net-route.git" }
-netconfig = { git = "https://github.com/xutianyi1999/netconfig.git" }
 hostsfile = { git = "https://github.com/tonarino/innernet.git" }
 
 mimalloc = { version = "*", default-features = false, optional = true }
+
+[target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies]
+net-route = { git = "https://github.com/johnyburd/net-route.git" }
+netconfig = { git = "https://github.com/xutianyi1999/netconfig.git" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tempfile = "3"

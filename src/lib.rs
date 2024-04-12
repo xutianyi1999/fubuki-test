@@ -39,6 +39,7 @@ mod node;
 mod server;
 mod tun;
 
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 #[cfg_attr(target_os = "windows", path = "nat/windows.rs")]
 #[cfg_attr(target_os = "linux", path = "nat/linux.rs")]
 #[cfg_attr(target_os = "macos", path = "nat/macos.rs")]
@@ -49,10 +50,6 @@ mod web;
 mod routing_table;
 
 mod ffi_export;
-
-#[cfg(feature = "mimalloc")]
-#[global_allocator]
-static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 type Key = CipherEnum;
 
@@ -500,6 +497,7 @@ fn logger_init() -> Result<()> {
     Ok(())
 }
 
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 pub fn launch(args: Args) -> Result<()> {
     static LOGGER_INIT: Once = Once::new();
 

@@ -1,14 +1,22 @@
 use std::process::ExitCode;
 
-use human_panic::setup_panic;
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-use fubukil::{Args, launch};
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+fn main() -> ExitCode {
+    eprintln!("fubuki does not support the current platform");
+    ExitCode::FAILURE
+}
 
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 #[cfg(not(feature = "gui"))]
 fn main() -> ExitCode {
+    use fubukil::{Args, launch};
     use clap::Parser;
 
-    setup_panic!();
+    human_panic::setup_panic!();
 
     match launch(Args::parse()) {
         Ok(_) => ExitCode::SUCCESS,
@@ -19,9 +27,12 @@ fn main() -> ExitCode {
     }
 }
 
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 #[cfg(feature = "gui")]
 fn main() -> ExitCode {
-    setup_panic!();
+    use fubukil::{Args, launch};
+
+    human_panic::setup_panic!();
 
     let mut settings = klask::Settings::default();
 

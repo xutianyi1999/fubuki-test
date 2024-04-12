@@ -41,7 +41,6 @@ use crate::common::allocator::Bytes;
 use crate::common::cipher::CipherContext;
 use crate::common::net::{get_ip_dst_addr, get_ip_src_addr, HeartbeatCache, HeartbeatInfo, SocketExt, UdpStatus};
 use crate::common::net::protocol::{AllocateError, GroupContent, HeartbeatType, MAGIC_NUM, NetProtocol, Node, Register, RegisterError, Seq, SERVER_VIRTUAL_ADDR, TCP_BUFF_SIZE, TCP_MSG_HEADER_LEN, TcpMsg, UDP_BUFF_SIZE, UDP_MSG_HEADER_LEN, UdpMsg, VirtualAddr};
-use crate::nat::{add_nat, del_nat};
 use crate::node::api::api_start;
 use crate::node::sys_route::SystemRouteHandle;
 use crate::routing_table::{Item, ItemKind, RoutingTable};
@@ -1066,8 +1065,11 @@ where
 {
     let join: JoinHandle<Result<()>> = tokio::spawn(async move {
         let mut sys_route_is_sync = false;
+
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
         // use defer must use atomic
         let is_add_nat = AtomicBool::new(false);
+
         let host_records = Arc::new(Mutex::new(HashSet::new()));
 
         // todo requires Arc + Mutex to pass compile
@@ -1092,10 +1094,11 @@ where
                 }
             }
 
+            #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
             if is_add_nat.load(Ordering::Relaxed) {
                 info!("clear node {} nat list", group.node_name);
 
-                if let Err(e) = del_nat(&group.allowed_ips, interface.cidr.load()) {
+                if let Err(e) = crate::nat::del_nat(&group.allowed_ips, interface.cidr.load()) {
                     error!("failed to delete nat: {}", e);
                 }
             }
@@ -1124,8 +1127,9 @@ where
                     cidr,
                 )?;
 
+                #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
                 if !group.allowed_ips.is_empty() {
-                    add_nat(&group.allowed_ips, cidr)?;
+                    crate::nat::add_nat(&group.allowed_ips, cidr)?;
                     is_add_nat.store(true, Ordering::Relaxed);
                 }
 
@@ -1169,16 +1173,17 @@ where
                                 *cidr,
                             )?;
 
+                            #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
                             if !group.allowed_ips.is_empty() {
                                 if old_cidr != *cidr &&
                                     is_add_nat.load(Ordering::Relaxed)
                                 {
-                                    del_nat(&group.allowed_ips,old_cidr)?;
+                                    crate::nat::del_nat(&group.allowed_ips,old_cidr)?;
                                     is_add_nat.store(false, Ordering::Relaxed);
                                 }
 
                                 if !is_add_nat.load(Ordering::Relaxed) {
-                                    add_nat(&group.allowed_ips, *cidr)?;
+                                    crate::nat::add_nat(&group.allowed_ips, *cidr)?;
                                     is_add_nat.store(true, Ordering::Relaxed);
                                 }
                             }
