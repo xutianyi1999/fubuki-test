@@ -33,7 +33,8 @@ jobs:
         with:
           target: ${{ matrix.target }}
           # (required)
-          bin: libfubukil.so
+          bin: fubuki
+          include: ${{ github.workspace }}/${{ github.event.repository.name }}/target/${{ matrix.target }}/release/libfubukil.so
           # (optional) On which platform to distribute the `.tar.gz` file.
           # [default value: unix]
           # [possible values: all, unix, windows, none]

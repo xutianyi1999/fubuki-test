@@ -1073,8 +1073,8 @@ where
     let join: JoinHandle<Result<()>> = tokio::spawn(async move {
         let mut sys_route_is_sync = false;
 
-        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
         // use defer must use atomic
+        #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
         let is_add_nat = AtomicBool::new(false);
 
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
