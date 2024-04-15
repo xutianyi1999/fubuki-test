@@ -18,6 +18,8 @@ const FUBUKI_START_OPTIONS_VERSION_V1: u32 = 1;
 #[cfg(target_os = "android")]
 const FUBUKI_START_OPTIONS_VERSION_V2: u32 = 2;
 
+static LOGGER_INIT: Once = Once::new();
+
 type FubukiToIfFn = extern "C" fn(packet: *const u8, len: usize, ctx: *mut c_void);
 type AddAddrFn = extern "C" fn(addr: u32, netmask: u32, ctx: *mut c_void);
 type DeleteAddrFn = extern "C" fn(addr: u32, netmask: u32, ctx: *mut c_void);
@@ -105,8 +107,6 @@ fn fubuki_init_inner(
     let c = parse_config(node_config_json)?;
     let rt = Runtime::new()?;
 
-    static LOGGER_INIT: Once = Once::new();
-
     LOGGER_INIT.call_once(|| {
         logger_init().expect("logger initialization failed");
     });
@@ -144,8 +144,6 @@ fn fubuki_init_with_tun(
 ) -> Result<Handle> {
     let c = parse_config(node_config_json)?;
     let rt = Runtime::new()?;
-
-    static LOGGER_INIT: Once = Once::new();
 
     LOGGER_INIT.call_once(|| {
         logger_init().expect("logger initialization failed");

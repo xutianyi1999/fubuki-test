@@ -22,14 +22,12 @@ pub trait SocketExt {
 
     fn set_send_buffer_size(&self, size: usize) -> Result<()>;
 
-    fn bind_device(&self, _interface: &str, _ipv6: bool) -> Result<()> {
-        unimplemented!()
-    }
+    fn bind_device(&self, _interface: &str, _ipv6: bool) -> Result<()>;
 }
 
 const TCP_KEEPALIVE: TcpKeepalive = TcpKeepalive::new().with_time(Duration::from_secs(120));
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn bind_device<T: std::os::unix::io::AsFd>(
     socket: &T,
     interface: &str,
@@ -118,7 +116,6 @@ macro_rules! build_socket_ext {
                 sock_ref.set_send_buffer_size(size)
             }
 
-            #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
             fn bind_device(&self, interface: &str, ipv6: bool) -> Result<()> {
                 bind_device(self, interface, ipv6)
             }
