@@ -25,7 +25,9 @@ impl TunDevice for Androidtun {
     type RecvFut<'a> = impl Future<Output = Result<usize>> + 'a;
 
     fn send_packet<'a>(&'a self, packet: &'a [u8]) -> Self::SendFut<'a> {
-        self.inner.send(packet).map_err(|e| anyhow!(e))
+        self.inner.send(packet)
+            .map_ok(|_| ())
+            .map_err(|e| anyhow!(e))
     }
 
     fn recv_packet<'a>(&'a self, buff: &'a mut [u8]) -> Self::RecvFut<'a> {
