@@ -19,22 +19,66 @@ jobs:
     strategy:
       matrix:
         include:
-          - target: aarch64-linux-android
+          # apple
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            build_tool: cargo
+            features: web, mimalloc
+
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            build_tool: cargo
+            features: web, mimalloc
+
+          # windows
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            build_tool: cargo
+            features: web, mimalloc
+
+          - target: i686-pc-windows-msvc
+            os: windows-latest
+            build_tool: cargo
+            features: web, mimalloc
+
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            build_tool: cargo
+            features: web, mimalloc
+
+          # linux
+          - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
-            build_tool: cross
+            build_tool: cargo
+            features: web, mimalloc
+
+          - target: i686-unknown-linux-musl
+            os: ubuntu-latest
+            build_tool: cargo
+            features: web
+
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            build_tool: cargo-zigbuild
+            features: web, mimalloc
+
+          - target: armv7-unknown-linux-musleabihf
+            os: ubuntu-latest
+            build_tool: cargo-zigbuild
+            features: web, mimalloc
 
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - run: |
-          cargo install cross --git https://github.com/cross-rs/cross
-        if: matrix.target == 'aarch64-linux-android'
+          sudo apt update -y
+          sudo apt install -y musl-tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           target: ${{ matrix.target }}
           # (required)
           bin: fubuki
-          include: ${{ github.workspace }}/${{ github.event.repository.name }}/target/${{ matrix.target }}/release/libfubukil.so
           # (optional) On which platform to distribute the `.tar.gz` file.
           # [default value: unix]
           # [possible values: all, unix, windows, none]
@@ -51,3 +95,22 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUSTUP_TOOLCHAIN: nightly
           CARGO_TERM_COLOR: always
+
+  build-android:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [
+          aarch64-linux-android,
+          armv7-linux-androideabi,
+          i686-linux-android,
+          x86_64-linux-android
+        ]
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          cargo install cross --git https://github.com/cross-rs/cross
+          cross +nightly build --release --target ${{ matrix.target }}
+          cd target/${{ matrix.target }}/release
+          tar -czf libfubuki-${{ matrix.target }}.tar.gz libfubukil.so
+          gh release upload ${{ github.ref_name }} libfubuki-${{ matrix.target }}.tar.gz
