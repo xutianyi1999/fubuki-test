@@ -5,7 +5,7 @@ use std::ptr::null_mut;
 use std::slice;
 use std::sync::Once;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use tokio::runtime::Runtime;
 
 use crate::{Key, logger_init, node, NodeConfig, NodeConfigFinalize};
@@ -140,6 +140,8 @@ fn fubuki_init_with_tun(
     node_config_json: *const c_char,
     tun_fd: std::os::fd::RawFd
 ) -> Result<Handle> {
+    use anyhow::Context;
+
     let c = parse_config(node_config_json)?;
     let rt = Runtime::new()?;
 
