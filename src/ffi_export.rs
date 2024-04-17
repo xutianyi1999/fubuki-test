@@ -5,7 +5,7 @@ use std::ptr::null_mut;
 use std::slice;
 use std::sync::Once;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use tokio::runtime::Runtime;
 
 use crate::{Key, logger_init, node, NodeConfig, NodeConfigFinalize};
@@ -122,13 +122,11 @@ fn fubuki_init_inner(
         if_to_fubuki_rx: rx,
     };
 
-    rt.spawn(
-        async move {
-            if let Err(e) = node::start(c, bridge).await {
-                error!("{:?}", e);
-            }
+    rt.spawn(async move {
+        if let Err(e) = node::start(c, bridge).await {
+            error!("{:?}", e);
         }
-    );
+    });
 
     let h = Handle {
         _rt: rt,
@@ -149,15 +147,17 @@ fn fubuki_init_with_tun(
         logger_init().expect("logger initialization failed");
     });
 
-    let tun = crate::tun::create(tun_fd)?;
+    rt.spawn(async move {
+        let fut = async {
+            // creating AsyncTun must be in the tokio runtime
+            let tun = crate::tun::create(tun_fd).context("failed to create tun")?;
+            node::start(c, tun).await
+        };
 
-    rt.spawn(
-        async move {
-            if let Err(e) = node::start(c, tun).await {
-                error!("{:?}", e);
-            }
+        if let Err(e) = fut.await {
+            error!("{:?}", e);
         }
-    );
+    });
 
     let h = Handle {
         _rt: rt,
