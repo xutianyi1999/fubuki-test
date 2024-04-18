@@ -142,6 +142,9 @@ fn fubuki_init_with_tun(
 ) -> Result<Handle> {
     use anyhow::Context;
 
+    println!("print: fubuki_init_with_tun");
+    info!("log: fubuki_init_with_tun");
+
     let c = parse_config(node_config_json)?;
     let rt = Runtime::new()?;
 
