@@ -17,7 +17,6 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
-log4rs = "1"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -56,6 +55,10 @@ mimalloc = { version = "*", default-features = false, optional = true }
 net-route = { git = "https://github.com/johnyburd/net-route.git" }
 netconfig = { git = "https://github.com/xutianyi1999/netconfig.git" }
 hostsfile = { git = "https://github.com/tonarino/innernet.git" }
+log4rs = "1"
+
+[target.'cfg(target_os = "android")'.dependencies]
+android_logger = "0.13"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tempfile = "3"

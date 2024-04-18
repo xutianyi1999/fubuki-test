@@ -21,9 +21,6 @@ use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 use gethostname::gethostname;
 use ipnet::Ipv4Net;
-use log4rs::append::console::ConsoleAppender;
-use log4rs::config::{Appender, Root};
-use log4rs::encode::pattern::PatternEncoder;
 use log::LevelFilter;
 use serde::{de, Deserialize};
 
@@ -471,7 +468,24 @@ fn load_config<T: de::DeserializeOwned>(path: &Path) -> Result<T> {
     serde_json::from_reader(file).context("failed to parse config")
 }
 
+#[cfg(target_os = "android")]
 fn logger_init() -> Result<()> {
+    android_logger::init_once(
+        android_logger::Config::default()
+            .with_max_level(LevelFilter::from_str(
+                std::env::var("FUBUKI_LOG").as_deref().unwrap_or("INFO"),
+            )?),
+    );
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "android"))]
+fn logger_init() -> Result<()> {
+    use log4rs::append::console::ConsoleAppender;
+    use log4rs::config::{Appender, Root};
+    use log4rs::encode::pattern::PatternEncoder;
+
     let pattern = if cfg!(debug_assertions) {
         "[{d(%Y-%m-%d %H:%M:%S)}] {h({l})} {f}:{L} - {m}{n}"
     } else {
