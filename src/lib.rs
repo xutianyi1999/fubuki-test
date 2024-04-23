@@ -12,6 +12,7 @@ extern crate log;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use ahash::HashMap;
@@ -556,7 +557,7 @@ pub fn launch(args: Args) -> Result<()> {
                     rt.block_on(async {
                         // creating AsyncTun must be in the tokio runtime
                         let tun = tun::create().context("failed to create tun")?;
-                        node::start(c, tun).await
+                        node::start(c, tun, Arc::new(OnceLock::new())).await
                     })?;
                 }
                 NodeCmd::Info { api, info_type } => {
