@@ -5,6 +5,9 @@
 #![feature(impl_trait_in_assoc_type)]
 #![feature(lazy_cell)]
 #![feature(sync_unsafe_cell)]
+// todo the feature `slice_first_last_chunk` has been stable since 1.77.0 and no longer requires an attribute to enable
+#![feature(slice_first_last_chunk)]
+#![allow(stable_features)]
 
 #[macro_use]
 extern crate log;
