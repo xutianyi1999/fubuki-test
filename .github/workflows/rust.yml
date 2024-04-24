@@ -133,8 +133,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
-          cargo build --bin --release --features web,mimalloc
-          cd target/release
+          cargo build --bin fubuki --release --features web,mimalloc
+          cd target\release
           $fubuki_zip = "fubuki-${{ matrix.target }}.zip"
           $fubuki_zip = $fubuki_zip -replace "pc", "win7"
           Compress-Archive -Path .\fubuki.exe -Destination $fubuki_zip
