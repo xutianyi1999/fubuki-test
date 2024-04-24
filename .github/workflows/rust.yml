@@ -48,12 +48,12 @@ jobs:
 
           - target: i686-win7-windows-msvc
             os: windows-latest
-            build_tool: cargo
+            build_tool: cargo-zigbuild
             features: web
 
           - target: x86_64-win7-windows-msvc
             os: windows-latest
-            build_tool: cargo
+            build_tool: cargo-zigbuild
             features: web
 
           # linux
