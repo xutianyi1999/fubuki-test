@@ -135,7 +135,8 @@ jobs:
       - run: |
           cargo build --bin --release --features web,mimalloc
           cd target/release
-          $fubuki_zip = "fubuki-${{ matrix.target }}.zip" --replace "pc", "win7"
+          $fubuki_zip = "fubuki-${{ matrix.target }}.zip"
+          $fubuki_zip = $fubuki_zip --replace "pc", "win7"
           Compress-Archive -Path .\fubuki.exe -Destination $fubuki_zip
           gh release upload ${{ github.ref_name }} $fubuki_zip
         env:
