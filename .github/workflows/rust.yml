@@ -54,8 +54,8 @@ jobs:
 
           - target: i686-unknown-linux-musl
             os: ubuntu-latest
-            build_tool: cargo
-            features: web, cross-nat
+            build_tool: cargo-zigbuild
+            features: web, mimalloc, cross-nat
 
           - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
@@ -73,7 +73,7 @@ jobs:
       - run: |
           sudo apt update -y
           sudo apt install -y musl-tools
-        if: matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'i686-unknown-linux-musl'
+        if: matrix.target == 'x86_64-unknown-linux-musl'
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           target: ${{ matrix.target }}
