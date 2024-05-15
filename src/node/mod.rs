@@ -54,7 +54,8 @@ use crate::routing_table::{Item, ItemKind, RoutingTable};
 use crate::tun::TunDevice;
 
 mod api;
-
+#[cfg(feature = "cross-nat")]
+mod cross_nat;
 #[cfg_attr(any(target_os = "windows", target_os = "linux", target_os = "macos"), path = "sys_route.rs")]
 #[cfg_attr(not(any(target_os = "windows", target_os = "linux", target_os = "macos")), path = "fake_sys_route.rs")]
 mod sys_route;
@@ -347,6 +348,11 @@ enum TransferType {
     Broadcast,
 }
 
+#[allow(unused)]
+fn find_once<RT: RoutingTable>(rt: &RT, src_addr: Ipv4Addr, dst_addr: Ipv4Addr) -> Option<Cow<Item>>{
+    rt.find(src_addr, dst_addr)
+}
+
 fn find_route<RT: RoutingTable>(rt: &RT, src_addr: Ipv4Addr, mut dst_addr: Ipv4Addr) -> Option<(Ipv4Addr, Cow<Item>)> {
     let mut item = rt.find(src_addr, dst_addr)?;
     let mut count = 1;
@@ -371,7 +377,9 @@ struct PacketSender<'a, InterRT, ExternRT, Tun, K> {
     interfaces: &'a [&'a Interface<K>],
     nodes_cache: Vec<Cache<&'a ArcSwap<NodeList>, Arc<NodeList>>>,
     tun: &'a Tun,
-    hooks: Option<&'a Hooks<K>>
+    hooks: Option<&'a Hooks<K>>,
+    #[cfg(feature = "cross-nat")]
+    snat: Option<Arc<cross_nat::SNat>>
 }
 
 #[repr(C)]
@@ -392,14 +400,18 @@ impl <'a, InterRT, ExternRT, Tun, K> PacketSender<'a, InterRT, ExternRT, Tun, K>
         rt: &'a RoutingTableEnum<InterRT, ExternRT>,
         interfaces: &'a [&'a Interface<K>],
         tun: &'a Tun,
-        hooks: Option<&'a Hooks<K>>
+        hooks: Option<&'a Hooks<K>>,
+        #[cfg(feature = "cross-nat")]
+        snat: Option<Arc<cross_nat::SNat>>
     ) -> Self {
         PacketSender {
             rt_ref: RoutingTableRefEnum::from(rt),
             interfaces,
             nodes_cache: interfaces.iter().map(|v| Cache::new(&v.node_list)).collect::<Vec<_>>(),
             tun,
-            hooks
+            hooks,
+            #[cfg(feature = "cross-nat")]
+            snat
         }
     }
 
@@ -425,6 +437,18 @@ impl <'a, InterRT, ExternRT, Tun, K> PacketSender<'a, InterRT, ExternRT, Tun, K>
 
             if output == PacketRecvOutput::Drop {
                 return Ok(());
+            }
+        }
+
+        #[cfg(feature = "cross-nat")]
+        if let Some(snat) = self.snat.as_deref() {
+            let item = match &mut self.rt_ref {
+                RoutingTableRefEnum::Cache(v) => find_once(&**v.load(), src_addr, dst_addr),
+                RoutingTableRefEnum::Ref(v) => unsafe { find_once(&*v.get(), src_addr, dst_addr) }
+            };
+
+            if item.and_then(|i| i.extend.item_kind) == Some(ItemKind::AllowedIpsRoute) {
+                return snat.input(&buff[packet_range]).await;
             }
         }
 
@@ -523,7 +547,9 @@ async fn tun_handler<T, K, InterRT, ExternRT>(
     tun: T,
     routing_table: Arc<RoutingTableEnum<InterRT, ExternRT>>,
     interfaces: Vec<Arc<Interface<K>>>,
-    hooks: Option<Arc<Hooks<K>>>
+    hooks: Option<Arc<Hooks<K>>>,
+    #[cfg(feature = "cross-nat")]
+    snat: Option<Arc<cross_nat::SNat>>
 ) -> Result<()>
     where
         T: TunDevice + Clone + Send + Sync + 'static,
@@ -539,6 +565,8 @@ async fn tun_handler<T, K, InterRT, ExternRT>(
             let routing_table = routing_table.clone();
             let interfaces = interfaces.clone();
             let hooks = hooks.clone();
+            #[cfg(feature = "cross-nat")]
+            let snat = snat.clone();
 
             let join: JoinHandle<Result<()>> = tokio::spawn(async move {
                 let interfaces = interfaces.iter().map(|v| &**v).collect::<Vec<_>>();
@@ -547,7 +575,9 @@ async fn tun_handler<T, K, InterRT, ExternRT>(
                     &*routing_table,
                     &interfaces,
                     &tun,
-                    hooks.as_deref()
+                    hooks.as_deref(),
+                    #[cfg(feature = "cross-nat")]
+                    snat
                 );
 
                 let mut buff = vec![0u8; UDP_BUFF_SIZE];
@@ -598,7 +628,9 @@ async fn udp_handler<T, K, InterRT, ExternRT>(
     table: Arc<RoutingTableEnum<InterRT, ExternRT>>,
     interface: Arc<Interface<K>>,
     tun: T,
-    hooks: Option<Arc<Hooks<K>>>
+    hooks: Option<Arc<Hooks<K>>>,
+    #[cfg(feature = "cross-nat")]
+    snat: Option<Arc<cross_nat::SNat>>
 ) -> Result<()>
 where
     T: TunDevice + Clone + Send + Sync + 'static,
@@ -703,7 +735,7 @@ where
                                         
                                         macro_rules! send {
                                             ($peer_addr: expr) => {
-                                                if group.socket_bind_device.is_some() ||
+                                                if config.socket_bind_device.is_some() ||
                                                 !through_virtual_gateway(rt, SocketAddr::new(lan_ip_addr, 0), $peer_addr) 
                                                 {
                                                     socket.send_to(&packet, $peer_addr).await?;
@@ -746,6 +778,8 @@ where
             let table = table.clone();
             let tun = tun.clone();
             let hooks = hooks.clone();
+            #[cfg(feature = "cross-nat")]
+            let snat = snat.clone();
 
             let join = tokio::spawn(async move {
                 let socket = interface.udp_socket.as_ref().expect("must need udp socket");
@@ -753,7 +787,14 @@ where
                 let is_p2p = interface.mode.p2p.contains(&NetProtocol::UDP);
 
                 let arr = [interface.as_ref()];
-                let mut sender = PacketSender::new(&*table, &arr, &tun, hooks.as_deref());
+                let mut sender = PacketSender::new(
+                    &*table, 
+                    &arr, 
+                    &tun, 
+                    hooks.as_deref(), 
+                    #[cfg(feature = "cross-nat")]
+                    snat
+                );
                 let mut buff = vec![0u8; UDP_BUFF_SIZE];
 
                 loop {
@@ -866,7 +907,7 @@ where
 
                                             if node.udp_status.load() == UdpStatus::Unavailable &&
                                                 hc_guard.packet_continuous_recv_count >= config.udp_heartbeat_continuous_recv &&
-                                                (group.socket_bind_device.is_some() || !through_vgateway())
+                                                (config.socket_bind_device.is_some() || !through_vgateway())
                                             {
                                                 drop(hc_guard);
 
@@ -926,6 +967,7 @@ async fn register<K>(
     register_addr: &mut RegisterVirtualAddr,
     lan_udp_socket_addr: Option<SocketAddr>,
     refresh_route: &mut bool,
+    socket_bind_device: Option<&str>
 ) -> Result<(TcpStream, GroupContent)>
 where
     K: Cipher + Clone
@@ -942,7 +984,7 @@ where
 
     socket.set_nodelay(true)?;
 
-    if let Some(device) = &group.socket_bind_device {
+    if let Some(device) = socket_bind_device {
         SocketExt::bind_device(&socket, device, server_addr.is_ipv6())?;
     }
 
@@ -1116,7 +1158,9 @@ async fn tcp_handler<T, K, InterRT, ExternRt>(
     channel_rx: Option<Receiver<Bytes>>,
     sys_routing: Option<Arc<tokio::sync::Mutex<SystemRouteHandle>>>,
     routes: Vec<Route>,
-    hooks: Option<Arc<Hooks<K>>>
+    hooks: Option<Arc<Hooks<K>>>,
+    #[cfg(feature = "cross-nat")]
+    snat: Option<Arc<cross_nat::SNat>>
 ) -> Result<()>
 where
     T: TunDevice + Clone + Send + Sync + 'static,
@@ -1215,7 +1259,8 @@ where
                         key,
                         &mut tun_addr,
                         lan_udp_socket_addr,
-                        &mut refresh_route
+                        &mut refresh_route,
+                        config.socket_bind_device.as_deref()
                     )
                 ).await.with_context(|| format!("register to {} timeout", group.server_addr))??;
 
@@ -1302,11 +1347,20 @@ where
                     let tun = tun.clone();
                     let routing_table = routing_table.clone();
                     let hooks = hooks.clone();
+                    #[cfg(feature = "cross-nat")]
+                    let snat = snat.clone();
 
                     let join = tokio::spawn(async move {
                         let fut = async {
                             let arr = [interface.as_ref()];
-                            let mut sender = PacketSender::new(&*routing_table, &arr, &tun, hooks.as_deref());
+                            let mut sender = PacketSender::new(
+                                &*routing_table, 
+                                &arr, 
+                                &tun, 
+                                hooks.as_deref(), 
+                                #[cfg(feature = "cross-nat")]
+                                snat
+                            );
 
                             const START: usize = UDP_MSG_HEADER_LEN;
                             let mut buff = vec![0u8; TCP_BUFF_SIZE];
@@ -1550,7 +1604,9 @@ async fn send_packet_hook_handler<T, K, InterRT, ExternRT>(
     tun: T,
     routing_table: Arc<RoutingTableEnum<InterRT, ExternRT>>,
     interfaces: Vec<Arc<Interface<K>>>,
-    hooks: Option<Arc<Hooks<K>>>
+    hooks: Option<Arc<Hooks<K>>>,
+    #[cfg(feature = "cross-nat")]
+    snat: Option<Arc<cross_nat::SNat>>
 ) -> Result<()>
     where
         T: TunDevice + Clone + Send + Sync + 'static,
@@ -1565,7 +1621,9 @@ async fn send_packet_hook_handler<T, K, InterRT, ExternRT>(
             &*routing_table,
             &interfaces,
             &tun,
-            hooks.as_deref()
+            hooks.as_deref(),
+            #[cfg(feature = "cross-nat")]
+            snat
         );
 
         let mut buff = vec![0u8; UDP_BUFF_SIZE];
@@ -1682,6 +1740,20 @@ pub async fn start<K, T>(
 
     let rt = Arc::new(rt);
 
+    #[cfg(feature = "cross-nat")]
+    let snat = if config.cross_nat {
+        let snat = cross_nat::SNat::create(
+            rt.clone(), 
+            interfaces_hook.clone(), 
+            tun.clone(), 
+            hooks.clone(), 
+            config.socket_bind_device.clone()
+        )?;
+        Some(Arc::new(snat))
+    } else {
+        None
+    };
+
     let mut future_list: Vec<BoxFuture<Result<()>>> = Vec::new();
     let mut interfaces = Vec::with_capacity(config.groups.len());
     let sys_routing = if config.features.disable_route_operation { None } else {
@@ -1718,7 +1790,7 @@ pub async fn start<K, T>(
                     udp_socket.set_send_buffer_size(v)?;
                 }
 
-                if let Some(device) = &group.socket_bind_device {
+                if let Some(device) = &config.socket_bind_device {
                     SocketExt::bind_device(&udp_socket, device, bind_addr.is_ipv6())?;
                 }
                 Some(udp_socket)
@@ -1776,7 +1848,9 @@ pub async fn start<K, T>(
             channel_rx,
             sys_routing.clone(),
             routes,
-            hooks.clone()
+            hooks.clone(),
+            #[cfg(feature = "cross-nat")]
+            snat.clone()
         );
         future_list.push(Box::pin(fut));
 
@@ -1787,7 +1861,9 @@ pub async fn start<K, T>(
                 rt.clone(),
                 interface,
                 tun.clone(),
-                hooks.clone()
+                hooks.clone(),
+                #[cfg(feature = "cross-nat")]
+                snat.clone()
             );
             future_list.push(Box::pin(fut));
         }
@@ -1795,14 +1871,30 @@ pub async fn start<K, T>(
 
     let _ = interfaces_hook.set(interfaces.clone());
    
-    let tun_handler_fut = tun_handler(tun.clone(), rt.clone(), interfaces.clone(), hooks);
+    let tun_handler_fut = tun_handler(
+        tun.clone(), 
+        rt.clone(),
+         interfaces.clone(), 
+         hooks, 
+         #[cfg(feature = "cross-nat")]
+         snat.clone()
+    );
     future_list.push(Box::pin(tun_handler_fut));
     if !config.features.disable_api_server {
         future_list.push(Box::pin(api_start(config.api_addr, interfaces.clone())));
     }
 
     if Arc::strong_count(&ctx) > 1 {
-        future_list.push(Box::pin(send_packet_hook_handler(config, send_packet_chan_rx, tun, rt, interfaces, None)));
+        future_list.push(Box::pin(send_packet_hook_handler(
+            config, 
+            send_packet_chan_rx, 
+            tun, 
+            rt, 
+            interfaces, 
+            None,
+            #[cfg(feature = "cross-nat")]
+            snat
+        )));
     } else {
         drop(ctx);
         drop(send_packet_chan_rx);
