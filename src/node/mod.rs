@@ -1182,7 +1182,7 @@ where
         let channel_rx = channel_rx.map(|v| Arc::new(tokio::sync::Mutex::new(v)));
 
         #[cfg(feature = "cross-nat")]
-        let native_nat = snat.none();
+        let native_nat = snat.is_none();
 
         #[cfg(not(feature = "cross-nat"))]
         let native_nat = true;
