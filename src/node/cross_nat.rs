@@ -68,9 +68,9 @@ async fn udp_inbound_handler(
 
                 let to_socket = UdpSocket::bind(bind_addr).await?;
 
-                if let Some(device) = bind_device.as_deref() {
-                    SocketExt::bind_device(&to_socket, device, to.is_ipv6())?;
-                }
+                // if let Some(device) = bind_device.as_deref() {
+                //     SocketExt::bind_device(&to_socket, device, to.is_ipv6())?;
+                // }
 
                 insert_item = Arc::new((from, to_socket, AtomicI64::new(Utc::now().timestamp())));
 
@@ -164,9 +164,9 @@ async fn tcp_inbound_handler(
 
                 crate::common::net::SocketExt::set_keepalive(&socket)?;
 
-                if let Some(device) = bind_device.as_deref() {
-                    SocketExt::bind_device(&socket, device, remote_addr.is_ipv6())?;
-                }
+                // if let Some(device) = bind_device.as_deref() {
+                //     SocketExt::bind_device(&socket, device, remote_addr.is_ipv6())?;
+                // }
 
                 let mut outbound_stream = socket
                     .connect(remote_addr)
