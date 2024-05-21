@@ -93,7 +93,7 @@ jobs:
         env:
           # (required)
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUSTUP_TOOLCHAIN: nightly
+          RUSTUP_TOOLCHAIN: nightly-2024-05-16
           CARGO_TERM_COLOR: always
 
   build-android:

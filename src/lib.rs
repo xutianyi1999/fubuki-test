@@ -272,6 +272,7 @@ impl TryFrom<NodeConfig> for NodeConfigFinalize<CipherEnum> {
         let mut list = Vec::with_capacity(config.groups.len());
         let mut use_ipv6 = false;
         let mut use_udp = false;
+        #[allow(unused)]
         let mut use_gateway = false;
 
         for group in config.groups {
