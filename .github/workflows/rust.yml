@@ -62,7 +62,7 @@ jobs:
             build_tool: cargo-zigbuild
             features: web, mimalloc, cross-nat
 
-          - target: armv7-unknown-linux-musleabihf
+          - target: armv7-unknown-linux-gnueabihf
             os: ubuntu-latest
             build_tool: cargo-zigbuild
             features: web, mimalloc, cross-nat
@@ -93,7 +93,7 @@ jobs:
         env:
           # (required)
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUSTUP_TOOLCHAIN: nightly-2024-05-16
+          RUSTUP_TOOLCHAIN: nightly
           CARGO_TERM_COLOR: always
 
   build-android:
