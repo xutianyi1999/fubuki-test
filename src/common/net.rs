@@ -56,8 +56,6 @@ fn bind_device<T: std::os::unix::io::AsFd>(
 
     #[cfg(target_os = "ios")]
     let index = {
-        use anyhow::{anyhow, Result};
-
         #[repr(transparent)]
         #[derive(Copy, Clone, Debug)]
         pub struct InterfaceName([libc::c_char; libc::IFNAMSIZ as _]);
@@ -69,22 +67,22 @@ fn bind_device<T: std::os::unix::io::AsFd>(
         }
 
         impl std::str::FromStr for InterfaceName {
-            type Err = anyhow::Error;
+            type Err = io::Error;
 
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
+            fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
                 Self::try_from(s)
             }
         }
 
         impl TryFrom<&str> for InterfaceName {
-            type Error = anyhow::Error;
+            type Error = io::Error;
 
-            fn try_from(value: &str) -> Result<Self, Self::Error> {
+            fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
                 if value.len() >= libc::IFNAMSIZ {
-                    return Err(anyhow!("name too long"));
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput,"name too long"));
                 }
                 let cname = std::ffi::CString::new(value)
-                    .map_err(|_| anyhow!("nul byte encountered"))?;
+                    .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput,"nul byte encountered"))?;
 
                 let mut result = Self::default();
                 for (x, y) in std::iter::zip(result.0.iter_mut(), cname.as_bytes_with_nul().iter()) {
@@ -94,10 +92,10 @@ fn bind_device<T: std::os::unix::io::AsFd>(
             }
         }
 
-        let name = InterfaceName::try_from(interface).map_err(|_| anyhow!("invalid parameter"))?;
+        let name = InterfaceName::try_from(interface)?;
 
-        match unsafe { libc::if_nametoindex(name.as_ptr()) } {
-            0 => return anyhow!("interface not found"),
+        match unsafe { libc::if_nametoindex(name.0.as_ptr()) } {
+            0 => return Err(io::Error::new(io::ErrorKind::NotFound, "interface not found")),
             n => n,
         }
     };

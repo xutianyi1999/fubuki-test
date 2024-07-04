@@ -48,27 +48,29 @@ linear-map = { git = "https://github.com/contain-rs/linear-map.git" }
 mimalloc = { version = "*", default-features = false, optional = true }
 netstack-lwip = { git = "https://github.com/xutianyi1999/netstack-lwip.git", optional = true }
 
+[target.'cfg(not(target_os = "android"))'.dependencies]
+log4rs = { version = "1", default-features = false, features = ["console_appender"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+android_logger = "0.14"
+
 [target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies]
 net-route = { git = "https://github.com/johnyburd/net-route.git" }
 netconfig = { git = "https://github.com/xutianyi1999/netconfig.git" }
 hostsfile = { git = "https://github.com/tonarino/innernet.git" }
 klask = { git = "https://github.com/xutianyi1999/klask.git", optional = true }
-log4rs = { version = "1", default-features = false, features = ["console_appender"] }
-
-[target.'cfg(target_os = "android")'.dependencies]
-android_logger = "0.14"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tempfile = "3"
 
 [target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "android", target_os = "ios"))'.dependencies]
 tun = { git = "https://github.com/xutianyi1999/rust-tun.git", features = ["async"] }
-self_update = { version = "0.40", default-features = false, features = ["archive-tar", "compression-flate2", "rustls"] }
+self_update = { version = "0.41", default-features = false, features = ["archive-tar", "compression-flate2", "rustls"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 simple_wintun = { git = "https://github.com/xutianyi1999/SimpleWintun.git", features = ["async"] }
-windows = { version = "0.57", features = ["Win32_Networking_WinSock"] }
-self_update = { version = "0.40", default-features = false, features = ["archive-zip", "compression-zip-deflate", "rustls"] }
+windows = { version = "0.58", features = ["Win32_Networking_WinSock"] }
+self_update = { version = "0.41", default-features = false, features = ["archive-zip", "compression-zip-deflate", "rustls"] }
 
 [target.'cfg(target_os = "ios")'.dependencies]
 libc = "0.2"
