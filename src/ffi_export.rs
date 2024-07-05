@@ -170,7 +170,7 @@ fn fubuki_init_with_tun(
 
     let interfaces_hook = Arc::new(OnceLock::new());
 
-    let fut = {
+    let start_fut = {
         let ih = interfaces_hook.clone();
 
         async move {
