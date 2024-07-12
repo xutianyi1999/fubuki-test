@@ -698,38 +698,45 @@ impl<K: Cipher + Clone + Send + Sync> Tunnel<K> {
 
                                 let mut fut = None;
                                 {
-                                    let node = node_handle.node.load();
+                                    let guard = group_handle.mapping.read();
 
-                                    for np in &node.mode.relay {
-                                        match np {
-                                            NetProtocol::TCP => {
-                                                let mut buff = allocator::alloc(TCP_MSG_HEADER_LEN + size_of::<VirtualAddr>() + packet.len());
-                                                buff[TCP_MSG_HEADER_LEN + size_of::<VirtualAddr>()..].copy_from_slice(packet);
-                                                TcpMsg::relay_encode(key, rng.gen(), dst_virt_addr, packet.len(), &mut buff);
+                                    if let Some(handle) = guard.get(&dst_virt_addr) {
+                                        let node = handle.node.load();
 
-                                                match node_handle.tx.try_send(buff) {
-                                                    Ok(_) => {
-                                                        debug!("tcp handler: tcp message relay to node {}", node.name);
-                                                        break;
-                                                    },
-                                                    Err(e) => warn!("group {} send packet to tcp channel error: {}", group.name, e)
+                                        for np in &node.mode.relay {
+                                            match np {
+                                                NetProtocol::TCP => {
+                                                    let mut buff = allocator::alloc(TCP_MSG_HEADER_LEN + size_of::<VirtualAddr>() + packet.len());
+                                                    buff[TCP_MSG_HEADER_LEN + size_of::<VirtualAddr>()..].copy_from_slice(packet);
+                                                    TcpMsg::relay_encode(key, rng.gen(), dst_virt_addr, packet.len(), &mut buff);
+
+                                                    match handle.tx.try_send(buff) {
+                                                        Ok(_) => {
+                                                            debug!("tcp handler: tcp message relay to node {}", node.name);
+                                                            break;
+                                                        },
+                                                        Err(e) => warn!("group {} send packet to tcp channel error: {}", group.name, e)
+                                                    }
                                                 }
-                                            }
-                                            NetProtocol::UDP =>  {
-                                                let udp_status = node_handle.udp_status.load();
+                                                NetProtocol::UDP =>  {
+                                                    let udp_status = handle.udp_status.load();
 
-                                                let addr = match udp_status {
-                                                    UdpStatus::Available { dst_addr } => dst_addr,
-                                                    UdpStatus::Unavailable => continue
-                                                };
+                                                    let addr = match udp_status {
+                                                        UdpStatus::Available { dst_addr } => dst_addr,
+                                                        UdpStatus::Unavailable => continue
+                                                    };
 
-                                                debug!("tcp handler: udp message relay to node {}", node.name);
+                                                    debug!("tcp handler: udp message relay to node {}", node.name);
 
-                                                let packet_len = packet.len();
-                                                let len = UdpMsg::relay_encode(key, rng.gen(), dst_virt_addr, packet_len, &mut buff);
+                                                    drop(node);
+                                                    drop(guard);
 
-                                                fut = Some(UdpMsg::send_msg(&udp_socket, &buff[..len], addr));
-                                                break;
+                                                    let packet_len = packet.len();
+                                                    let len = UdpMsg::relay_encode(key, rng.gen(), dst_virt_addr, packet_len, &mut buff);
+
+                                                    fut = Some(UdpMsg::send_msg(&udp_socket, &buff[..len], addr));
+                                                    break;
+                                                }
                                             }
                                         }
                                     }

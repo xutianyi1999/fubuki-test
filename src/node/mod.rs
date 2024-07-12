@@ -1736,10 +1736,10 @@ where
 
                                     for node in  &*node_list {
                                         let p2p_available = node.udp_status.load() != UdpStatus::Unavailable &&
-                                        !specify_mode
+                                        specify_mode
                                             .get(&node.node.virtual_addr)
-                                            .unwrap_or(&interface.mode)
-                                            .p2p.is_empty();
+                                            .map(|mode| !mode.p2p.is_empty())
+                                            .unwrap_or(true);
 
                                         let (latency, packet_loss) = if p2p_available {
                                             let guard = node.hc.read();
@@ -1779,7 +1779,7 @@ where
                     join.await?
                 };
 
-                let update_peers_schedule = if config.allow_packet_forward {
+                let update_peers_schedule = if config.allow_packet_forward && !group.mode.p2p.is_empty() {
                     update_peers_schedule.left_future()
                 } else {
                     std::future::pending().right_future()
