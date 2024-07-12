@@ -202,7 +202,7 @@ fn fubuki_init_with_tun(
             if_to_fubuki_tx: None,
             interfaces: interfaces_hook,
             node_start_fut: None,
-            stop_flag: None
+            stop_flag: (None, None)
         }
     };
 
