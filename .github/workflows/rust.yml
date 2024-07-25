@@ -36,6 +36,11 @@ jobs:
             build_tool: cargo
             features: web, mimalloc, cross-nat
 
+          - target: x86_64-pc-windows-gnu
+            os: windows-latest
+            build_tool: cargo
+            features: web, cross-nat
+
           - target: i686-pc-windows-msvc
             os: windows-latest
             build_tool: cargo
