@@ -143,3 +143,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUSTUP_TOOLCHAIN: nightly
           CARGO_TERM_COLOR: always
+
+  build-windows7:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        target: [
+          x86_64-win7-windows-msvc,
+          i686-win7-windows-msvc
+        ]
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          cargo +nightly build -Z build-std --bin fubuki --release --no-default-features --features "cross-nat,web" --target ${{ matrix.target }}
+          
+          cd target\${{ matrix.target }}\release
+          $fubuki_zip = "fubuki-${{ matrix.target }}.zip"
+          Compress-Archive -Path .\fubuki.exe -Destination $fubuki_zip
+          gh release upload ${{ github.ref_name }} $fubuki_zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUSTUP_TOOLCHAIN: nightly
+          CARGO_TERM_COLOR: always
