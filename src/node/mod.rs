@@ -287,7 +287,7 @@ fn find_next_hop(
                     if let (Some(latency), Some(packet_loss)) = (peer_status.latency, peer_status.packet_loss) {
                         // normalization
                         // 100 ms
-                        let latency_quality = latency.as_secs() / 100;
+                        let latency_quality = latency.as_secs() / 300;
                         // 5% packet loss
                         let packet_loss_quality = packet_loss as u64 / 5;
                         peers.push((peer_status.addr, latency_quality + packet_loss_quality));
