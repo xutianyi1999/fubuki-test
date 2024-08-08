@@ -151,7 +151,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: |
           rustup target add x86_64-pc-windows-msvc
-          rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
+          rustup component add rust-src --toolchain nightly
           cargo +nightly build -Z build-std --bin fubuki --release --no-default-features --features "cross-nat,web" --target ${{ matrix.target }}
           
           cd target\${{ matrix.target }}\release
