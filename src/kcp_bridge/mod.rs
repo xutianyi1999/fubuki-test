@@ -140,8 +140,11 @@ where
     pub async fn block_on(&mut self) -> anyhow::Result<()> {
         let mut buff = vec![0u8; TCP_BUFF_SIZE];
 
-        macro_rules! recv_to_tx {
-            () => {
+        macro_rules! update_and_recv {
+            () => {{
+                let now = Utc::now().timestamp_millis() as u32;
+                self.kcp.async_update(now).await?;
+
                 match self.kcp.recv(&mut buff) {
                     Ok(len) => {
                         let packet = &buff[..len];
@@ -150,7 +153,7 @@ where
                     Err(kcp::Error::RecvQueueEmpty) => (),
                     Err(e) => return Err(anyhow!("failed to recv kcp packet {}", e))
                 }
-            };
+            }};
         }
 
         loop {
@@ -159,16 +162,13 @@ where
 
             tokio::select! {
                 _ = tokio::time::sleep(Duration::from_millis(sleep as u64)) => {
-                    let now = Utc::now().timestamp_millis() as u32;
-                    self.kcp.async_update(now).await?;
-                    recv_to_tx!();
+                    update_and_recv!();
                 }
                 opt = self.stack_rx.recv() => {
                     match opt {
                         Some(bytes) => {
                             self.kcp.input(&bytes)?;
-                            self.kcp.async_update(now).await?;
-                            recv_to_tx!();
+                            update_and_recv!();
                         }
                         None => return Ok(())
                     };
@@ -182,8 +182,7 @@ where
 
                     let packet = &buff[..len];
                     self.kcp.send(packet)?;
-                    self.kcp.async_update(now).await?;
-                    recv_to_tx!();
+                    update_and_recv!();
                 }
             }
         }
