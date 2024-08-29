@@ -167,6 +167,7 @@ where
                     match opt {
                         Some(bytes) => {
                             self.kcp.input(&bytes)?;
+                            self.kcp.async_update(now).await?;
                             recv_to_tx!();
                         }
                         None => return Ok(())
@@ -181,6 +182,7 @@ where
 
                     let packet = &buff[..len];
                     self.kcp.send(packet)?;
+                    self.kcp.async_update(now).await?;
                     recv_to_tx!();
                 }
             }
